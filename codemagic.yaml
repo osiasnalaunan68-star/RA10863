@@ -18,13 +18,16 @@ workflows:
           npm run build
       - name: Sync Capacitor android
         script: npx --no-install cap sync android
-      - name: Point Gradle to Codemagic's Android SDK
-        script: echo "sdk.dir=$ANDROID_SDK_ROOT" > android/local.properties
+      - name: Set Android SDK
+        script: |
+          echo "sdk.dir=$ANDROID_SDK_ROOT" > android/local.properties
+          echo "ANDROID_HOME=$ANDROID_SDK_ROOT" >> $CM_ENV
       - name: Make gradlew executable
         script: chmod +x android/gradlew
-      - name: Build debug APK
+      - name: Clean and build debug APK
         script: |
           cd android
+          ./gradlew clean
           ./gradlew assembleDebug --stacktrace
     artifacts:
       - android/app/build/outputs/**/*.apk
