@@ -6,7 +6,7 @@ android {
     defaultConfig {
         applicationId "com.osias.cmta"
         minSdkVersion rootProject.ext.minSdkVersion
-        targetSdkVersion 34rootProject.ext.targetSdkVersion
+        targetSdkVersion 33rootProject.ext.targetSdkVersion
         versionCode 1
         versionName "1.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
