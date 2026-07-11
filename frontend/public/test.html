@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html>
+<head><title>Test DB</title></head>
+<body>
+  <h1>Testing Database</h1>
+  <pre id="out">Loading...</pre>
+  <script src="https://sql.js.org/dist/sql-wasm.js"></script>
+  <script>
+    const out = document.getElementById('out');
+    (async function() {
+      try {
+        out.textContent = '1. Loading SQL.js...';
+        const SQL = await initSqlJs({ locateFile: f => 'https://sql.js.org/dist/'+f });
+        out.textContent = '2. Fetching /customs_law.db...';
+        const r = await fetch('/customs_law.db');
+        if (!r.ok) throw new Error('HTTP '+r.status);
+        out.textContent = '3. Converting...';
+        const buf = await r.arrayBuffer();
+        const db = new SQL.Database(new Uint8Array(buf));
+        const result = db.exec('SELECT COUNT(*) FROM legal_nodes');
+        out.textContent = '✅ Success! Nodes: '+result[0].values[0][0];
+      } catch(e) {
+        out.textContent = '❌ ERROR: '+e.message;
+      }
+    })();
+  </script>
+</body>
+</html>

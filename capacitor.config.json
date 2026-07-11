@@ -1,0 +1,6 @@
+{
+  "appId": "com.osias.cmta",
+  "appName": "RA 10863 CMTA",
+  "webDir": "dist",
+  "bundledWebRuntime": false
+}

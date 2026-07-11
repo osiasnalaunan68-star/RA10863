@@ -1,0 +1,129 @@
+{
+  "node_type": "chapter",
+  "node_number": "1",
+  "title": "SHORT TITLE",
+  "content": null,
+  "status": "published",
+  "version": 1,
+  "keywords": [],
+  "cross_references": [],
+  "notes": [],
+  "children": [
+    {
+      "node_type": "section",
+      "node_number": "100",
+      "title": "Short Title",
+      "content": "This Act shall be known as the \"Customs Modernization and Tariff Act (CMTA)\".",
+      "status": "published",
+      "version": 1,
+      "keywords": [
+        "short title",
+        "CMTA"
+      ],
+      "cross_references": [],
+      "notes": [],
+      "children": []
+    },
+    {
+      "node_type": "section",
+      "node_number": "101",
+      "title": "Declaration of Policy",
+      "content": "It is hereby declared the policy of the State to promote and enhance economic development through modernization and automation of customs and tariff administration that will efficiently facilitate international trade, prevent and neutralize any form of customs fraud and protect the country’s customs and tariff administration. Towards this end, the State shall:",
+      "status": "published",
+      "version": 1,
+      "keywords": [
+        "policy",
+        "modernization",
+        "automation"
+      ],
+      "cross_references": [],
+      "notes": [],
+      "children": [
+        {
+          "node_type": "paragraph",
+          "node_number": "(a)",
+          "title": null,
+          "content": "Develop and implement programs for the continuous enhancement of customs systems and processes that will harmonize customs procedures;",
+          "status": "published",
+          "version": 1,
+          "keywords": [],
+          "cross_references": [],
+          "notes": [],
+          "children": []
+        },
+        {
+          "node_type": "paragraph",
+          "node_number": "(b)",
+          "title": null,
+          "content": "Adopt clear and transparent customs rules, regulations, policies and procedures, consistent with international standards and customs best practices;",
+          "status": "published",
+          "version": 1,
+          "keywords": [],
+          "cross_references": [],
+          "notes": [],
+          "children": []
+        },
+        {
+          "node_type": "paragraph",
+          "node_number": "(c)",
+          "title": null,
+          "content": "Establish a regime of transparency and accountability to customs information, customs laws, rules, regulations, administrative policies, procedures and practices, in order to ensure informed and diligent compliance with customs procedures and procedures by stakeholders;",
+          "status": "published",
+          "version": 1,
+          "keywords": [],
+          "cross_references": [],
+          "notes": [],
+          "children": []
+        },
+        {
+          "node_type": "paragraph",
+          "node_number": "(d)",
+          "title": null,
+          "content": "Consult, coordinate and cooperate with other government agencies and private sector in implementing and developing customs policy;",
+          "status": "published",
+          "version": 1,
+          "keywords": [],
+          "cross_references": [],
+          "notes": [],
+          "children": []
+        },
+        {
+          "node_type": "paragraph",
+          "node_number": "(e)",
+          "title": null,
+          "content": "Provide a fair and expeditious administrative and judicial appellate remedy for customs related grievances and matters;",
+          "status": "published",
+          "version": 1,
+          "keywords": [],
+          "cross_references": [],
+          "notes": [],
+          "children": []
+        },
+        {
+          "node_type": "paragraph",
+          "node_number": "(f)",
+          "title": null,
+          "content": "Employ modern practices in customs administration and utilize information and communications technology in the implementation of customs functions; and",
+          "status": "published",
+          "version": 1,
+          "keywords": [],
+          "cross_references": [],
+          "notes": [],
+          "children": []
+        },
+        {
+          "node_type": "paragraph",
+          "node_number": "(g)",
+          "title": null,
+          "content": "Institute professionalism and meritocracy in customs tax administration by attracting and retaining competent and efficient customs officers and personnel to enforce the provisions of this Act.",
+          "status": "published",
+          "version": 1,
+          "keywords": [],
+          "cross_references": [],
+          "notes": [],
+          "children": []
+        }
+      ]
+    }
+  ]
+}

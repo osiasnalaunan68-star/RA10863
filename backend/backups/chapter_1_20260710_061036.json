@@ -1,0 +1,30 @@
+{
+  "node_type": "chapter",
+  "node_number": "1",
+  "title": "SHORT TITLE",
+  "content": null,
+  "status": "published",
+  "version": 1,
+  "keywords": [],
+  "cross_references": [],
+  "notes": [],
+  "children": [
+    {
+      "node_type": "section",
+      "node_number": "100",
+      "title": "Short Title",
+      "content": "This Act shall be known as the \"Customs Modernization and Tariff Act (CMTA)\".",
+      "status": "published",
+      "version": 1,
+      "keywords": [],
+      "cross_references": [
+        {
+          "reference_text": "Bureau of Customs Official Website",
+          "url": "https://customs.gov.ph"
+        }
+      ],
+      "notes": [],
+      "children": []
+    }
+  ]
+}

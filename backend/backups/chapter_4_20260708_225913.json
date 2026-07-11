@@ -1,0 +1,88 @@
+{
+  "node_type": "chapter",
+  "node_number": "4",
+  "title": "RELIEF CONSIGNMENT",
+  "content": null,
+  "status": "published",
+  "version": 1,
+  "keywords": [],
+  "cross_references": [],
+  "notes": [],
+  "children": [
+    {
+      "node_type": "section",
+      "node_number": "120",
+      "title": "Relief Consignment",
+      "content": "Goods such as food, medicine, equipment and materials for shelter, donated or leased to government institutions and accredited private entities for free distribution to or use of victims of calamities shall be treated and entered as relief consignment.\n\nUpon declaration of a state of calamity, clearance of relief consignment shall be a matter of priority and subject to a simplified customs procedure. The Bureau shall provide for:\n\nThe Department of Finance (DOF) and the Department of Social Welfare and Development (DSWD) shall jointly issue the rules and regulations for the implementation of this provision.",
+      "status": "published",
+      "version": 1,
+      "keywords": [],
+      "cross_references": [],
+      "notes": [],
+      "children": [
+        {
+          "node_type": "paragraph",
+          "node_number": "(a)",
+          "title": null,
+          "content": "Lodging of a simplified goods declaration or of a provisional or incomplete goods declaration subject to completion of the declaration within a specified period;",
+          "status": "published",
+          "version": 1,
+          "keywords": [],
+          "cross_references": [],
+          "notes": [],
+          "children": []
+        },
+        {
+          "node_type": "paragraph",
+          "node_number": "(b)",
+          "title": null,
+          "content": "Lodging, registering and checking of the goods declaration and supporting documents prior to the arrival of the goods, and their release upon arrival;",
+          "status": "published",
+          "version": 1,
+          "keywords": [],
+          "cross_references": [],
+          "notes": [],
+          "children": []
+        },
+        {
+          "node_type": "paragraph",
+          "node_number": "(c)",
+          "title": null,
+          "content": "Clearance beyond the designated hours of business or away from customs offices and waiver of any corresponding charges; and",
+          "status": "published",
+          "version": 1,
+          "keywords": [],
+          "cross_references": [],
+          "notes": [],
+          "children": []
+        },
+        {
+          "node_type": "paragraph",
+          "node_number": "(d)",
+          "title": null,
+          "content": "Examination and/or sampling of goods only in exceptional circumstances.",
+          "status": "published",
+          "version": 1,
+          "keywords": [],
+          "cross_references": [],
+          "notes": [],
+          "children": []
+        }
+      ]
+    },
+    {
+      "node_type": "section",
+      "node_number": "121",
+      "title": "Duty and Tax Treatment",
+      "content": "Relief consignment, as defined in Section 120, imported during a state of calamity and intended for a specific calamity area for the use of the calamity victims therein, shall be exempt from duties and taxes.",
+      "status": "published",
+      "version": 1,
+      "keywords": [],
+      "cross_references": [
+        "Section 120"
+      ],
+      "notes": [],
+      "children": []
+    }
+  ]
+}

@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Test SQL.js</title>
+</head>
+<body>
+  <h1>Testing database load</h1>
+  <pre id="output">Loading...</pre>
+  <script src="https://sql.js.org/dist/sql-wasm.js"></script>
+  <script>
+    const output = document.getElementById('output');
+    async function test() {
+      try {
+        output.textContent = '1. Loading SQL.js...';
+        const SQL = await initSqlJs({
+          locateFile: file => `https://sql.js.org/dist/${file}`
+        });
+        output.textContent = '2. SQL.js loaded. Fetching database...';
+        
+        const response = await fetch('/customs_law.db');
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        output.textContent = '3. Database fetched. Converting to ArrayBuffer...';
+        
+        const arrayBuffer = await response.arrayBuffer();
+        const uint8Array = new Uint8Array(arrayBuffer);
+        output.textContent = `4. ArrayBuffer size: ${uint8Array.length} bytes. Creating database...`;
+        
+        const db = new SQL.Database(uint8Array);
+        output.textContent = '5. Database created. Running test query...';
+        
+        const result = db.exec('SELECT COUNT(*) as count FROM legal_nodes');
+        output.textContent = `6. Success! Total nodes: ${result[0].values[0][0]}`;
+      } catch (err) {
+        output.textContent = `❌ ERROR: ${err.message}`;
+        console.error(err);
+      }
+    }
+    test();
+  </script>
+</body>
+</html>

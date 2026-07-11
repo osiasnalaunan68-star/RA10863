@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">RA 10863 CMTA</string>
+    <string name="title_activity_main">RA 10863 CMTA</string>
+    <string name="package_name">com.osias.cmta</string>
+    <string name="custom_url_scheme">com.osias.cmta</string>
+</resources>

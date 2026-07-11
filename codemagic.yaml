@@ -1,0 +1,31 @@
+workflows:
+  android-apk:
+    name: CMTA Android APK
+    max_build_duration: 60
+    instance_type: linux_x2
+    environment:
+      node: 20
+      java: 17
+    triggering:
+      events:
+        - push
+    scripts:
+      - name: Install root deps
+        script: npm install
+      - name: Install and build frontend
+        script: |
+          cd frontend
+          npm install
+          npm run build
+      - name: Sync Capacitor android
+        script: npx --no-install cap sync android
+      - name: Point Gradle to Codemagic's Android SDK
+        script: echo "sdk.dir=$ANDROID_SDK_ROOT" > android/local.properties
+      - name: Make gradlew executable
+        script: chmod +x android/gradlew
+      - name: Build debug APK
+        script: |
+          cd android
+          ./gradlew assembleDebug --stacktrace
+    artifacts:
+      - android/app/build/outputs/**/*.apk
