@@ -1,10 +1,26 @@
+# Node
 node_modules/
+frontend/node_modules/
+npm-debug.log*
+
+# Build output
 dist/
-android/local.properties
-android/.gradle/
+frontend/dist/
+
+# Android
 android/app/build/
 android/build/
+android/.gradle/
+android/local.properties
 android/captures/
-android/.idea/
-*.apk
-*.aab
+android/app/release/
+
+# Python
+__pycache__/
+*.pyc
+backend/backups/
+backend/customs_law.db
+
+# Misc
+.DS_Store
+full_code_dump.md

@@ -20,5 +20,9 @@ workflows:
         script: |
           cd android
           ./gradlew assembleDebug
+          echo "--- Searching for build output ---"
+          find app/build/outputs -type f 2>/dev/null || echo "outputs dir missing"
     artifacts:
       - android/app/build/outputs/**/*.apk
+      - android/app/build/outputs/**/*.aab
+      - android/app/build/outputs/**/output-metadata.json
