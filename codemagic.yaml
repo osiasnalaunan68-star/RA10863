@@ -1,35 +1,24 @@
 workflows:
   android-apk:
-    name: CMTA Android APK
-    max_build_duration: 60
+    name: Android APK Build
     environment:
-      node: 22
-      java: 17
-    triggering:
-      events:
-        - push
+      node: latest
+      java: 21
     scripts:
-      - name: Install root deps
-        script: npm install
-      - name: Install and build frontend
+      - name: Install dependencies
+        script: |
+          npm install
+      - name: Build React app
         script: |
           cd frontend
           npm install
           npm run build
-      - name: Sync Capacitor android
-        script: npx --no-install cap sync android
-      - name: Set Android SDK
+      - name: Sync Capacitor
         script: |
-          echo "sdk.dir=$ANDROID_SDK_ROOT" > android/local.properties
-          echo "ANDROID_HOME=$ANDROID_SDK_ROOT" >> $CM_ENV
-      - name: Make gradlew executable
-        script: chmod +x android/gradlew
-      - name: Show SDK platforms (debug)
-        script: ls -la $ANDROID_SDK_ROOT/platforms || echo "No platforms"
-      - name: Build debug APK (with clean and info)
+          npx cap sync android
+      - name: Build Android APK
         script: |
           cd android
-          ./gradlew clean
-          ./gradlew assembleDebug --stacktrace
+          ./gradlew assembleDebug
     artifacts:
       - android/app/build/outputs/**/*.apk
