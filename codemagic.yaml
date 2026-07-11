@@ -24,7 +24,9 @@ workflows:
           echo "ANDROID_HOME=$ANDROID_SDK_ROOT" >> $CM_ENV
       - name: Make gradlew executable
         script: chmod +x android/gradlew
-      - name: Clean and build debug APK
+      - name: Show SDK platforms (debug)
+        script: ls -la $ANDROID_SDK_ROOT/platforms || echo "No platforms"
+      - name: Build debug APK (with clean and info)
         script: |
           cd android
           ./gradlew clean
