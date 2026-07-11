@@ -6,7 +6,7 @@ android {
 
     defaultConfig {
         applicationId "com.osias.cmta"
-        minSdkVersion 22
+        minSdkVersion 24
         targetSdkVersion 36
         versionCode 1
         versionName "1.0"
