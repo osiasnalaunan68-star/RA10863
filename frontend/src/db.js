@@ -32,6 +32,20 @@ export async function queryOne(sql, params = []) {
   return rows.length ? rows[0] : null;
 }
 
+function romanToInt(s) {
+  if (!s) return 0;
+  s = String(s).toUpperCase().trim();
+  const values = { I: 1, V: 5, X: 10, L: 50, C: 100, D: 500, M: 1000 };
+  let total = 0;
+  let prev = 0;
+  for (let i = s.length - 1; i >= 0; i--) {
+    const cur = values[s[i]] || 0;
+    total += cur < prev ? -cur : cur;
+    prev = cur;
+  }
+  return total;
+}
+
 export async function getTitles() {
   const rows = await query(`
     SELECT 
@@ -45,7 +59,7 @@ export async function getTitles() {
     FROM legal_nodes t
     LEFT JOIN legal_nodes c ON c.parent_id = t.id AND c.node_type = 'chapter'
     WHERE t.node_type = 'title'
-    ORDER BY CAST(t.node_number AS INTEGER) ASC, CAST(c.node_number AS INTEGER) ASC
+    ORDER BY CAST(c.node_number AS INTEGER) ASC
   `);
   const map = new Map();
   for (const row of rows) {
@@ -76,7 +90,9 @@ export async function getTitles() {
     WHERE c.node_type = 'chapter' AND c.parent_id IS NULL
     ORDER BY CAST(c.node_number AS INTEGER) ASC
   `);
-  const result = Array.from(map.values());
+  const result = Array.from(map.values()).sort(
+    (a, b) => romanToInt(a.title_number) - romanToInt(b.title_number)
+  );
   if (rootRows.length) {
     result.push({
       title_id: null,
