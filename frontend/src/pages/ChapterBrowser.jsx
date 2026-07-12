@@ -225,7 +225,15 @@ const STUDY_TYPE_STYLES = {
   item: "text-sm text-slate-500 dark:text-slate-500",
 };
 
-function StudyNodeRenderer({ node, level = 0, expandedSet = new Set(), scrollToId = null }) {
+const STUDY_DEPTH_BORDERS = [
+  "border-slate-200 dark:border-slate-700",
+  "border-amber-200 dark:border-amber-800",
+  "border-emerald-200 dark:border-emerald-800",
+  "border-purple-200 dark:border-purple-800",
+  "border-sky-200 dark:border-sky-800",
+];
+
+function StudyNodeRenderer({ node, level = 0, expandedSet = new Set(), scrollToId = null, collapseSignal = 0 }) {
   const nodeRef = useRef(null);
   const [expanded, setExpanded] = useState(false);
   const [notesOpen, setNotesOpen] = useState(false);
@@ -235,7 +243,14 @@ function StudyNodeRenderer({ node, level = 0, expandedSet = new Set(), scrollToI
   const isExpandable = hasChildren || !!node.content;
   const { highlights, addHighlight, removeHighlight } = useNodeHighlights(node.id, expanded);
   const { notes, createNote, editNote, removeNote } = useNodeNotes(node.id, true);
+  const prevCollapseSignal = useRef(collapseSignal);
   useEffect(() => { if (expandedSet.has(node.id)) setExpanded(true); }, [expandedSet, node.id]);
+  useEffect(() => {
+    if (collapseSignal !== prevCollapseSignal.current) {
+      prevCollapseSignal.current = collapseSignal;
+      setExpanded(false);
+    }
+  }, [collapseSignal]);
   useEffect(() => {
     if (scrollToId === node.id && nodeRef.current) {
       setTimeout(() => {
@@ -248,8 +263,8 @@ function StudyNodeRenderer({ node, level = 0, expandedSet = new Set(), scrollToI
   const toggle = (e) => { e.stopPropagation(); if (isExpandable) setExpanded((v) => !v); };
   return (
     <div ref={nodeRef} style={{ marginLeft: `${Math.min(level, 6) * 0.9}rem` }} className="my-1 rounded-xl transition-colors">
-      <div onClick={toggle} role="button" tabIndex={0} className="flex items-start gap-2 rounded-xl px-3 py-2.5 hover:bg-slate-50 active:bg-slate-100 cursor-pointer touch-manipulation dark:hover:bg-slate-800/60 dark:active:bg-slate-800">
-        <span className="mt-1 w-4 flex-shrink-0 select-none text-sm text-slate-400 dark:text-slate-600">{isExpandable ? (expanded ? "▾" : "▸") : ""}</span>
+      <div onClick={toggle} role="button" tabIndex={0} aria-expanded={isExpandable ? expanded : undefined} className="flex items-start gap-2 rounded-xl px-3 py-2.5 hover:bg-slate-50 active:bg-slate-100 cursor-pointer touch-manipulation dark:hover:bg-slate-800/60 dark:active:bg-slate-800">
+        <span className={`mt-1 flex h-5 w-5 flex-shrink-0 items-center justify-center select-none text-slate-400 transition-transform duration-200 dark:text-slate-600 ${expanded ? "rotate-90" : ""}`}>{isExpandable ? "▸" : ""}</span>
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             {node.node_type === "chapter" && <span className="inline-block rounded-md bg-navy-900 px-2 py-0.5 text-xs font-semibold uppercase tracking-wide text-white dark:bg-navy-700">Chapter {node.node_number}</span>}
@@ -289,8 +304,8 @@ function StudyNodeRenderer({ node, level = 0, expandedSet = new Set(), scrollToI
         </div>
       </div>
       {expanded && hasChildren && (
-        <div className="ml-4 border-l border-slate-100 dark:border-slate-800">
-          {node.children.map((child) => <StudyNodeRenderer key={child.id} node={child} level={level + 1} expandedSet={expandedSet} scrollToId={scrollToId} />)}
+        <div className={`ml-4 border-l-2 ${STUDY_DEPTH_BORDERS[(level + 1) % STUDY_DEPTH_BORDERS.length]}`}>
+          {node.children.map((child) => <StudyNodeRenderer key={child.id} node={child} level={level + 1} expandedSet={expandedSet} scrollToId={scrollToId} collapseSignal={collapseSignal} />)}
         </div>
       )}
     </div>
@@ -540,6 +555,16 @@ function findNodeAndAncestors(node, targetNumber, ancestors = []) {
   return { found: false };
 }
 
+function collectAllNodeIds(node, acc = []) {
+  if (node.children && node.children.length > 0) {
+    acc.push(node.id);
+    for (const child of node.children) collectAllNodeIds(child, acc);
+  } else if (node.content) {
+    acc.push(node.id);
+  }
+  return acc;
+}
+
 export default function ChapterBrowser() {
   const [view, setView] = useState("browse");
   const [titles, setTitles] = useState([]);
@@ -556,6 +581,7 @@ export default function ChapterBrowser() {
   const [expandedNodeIds, setExpandedNodeIds] = useState(new Set());
   const [scrollToNodeId, setScrollToNodeId] = useState(null);
   const [collapsedTitles, setCollapsedTitles] = useState({});
+  const [studyCollapseSignal, setStudyCollapseSignal] = useState(0);
   const [focusMode, setFocusMode] = useState(false);
   const [resumeAvailable, setResumeAvailable] = useState(null);
   const mainRef = useRef(null);
@@ -654,6 +680,16 @@ export default function ChapterBrowser() {
   }, [chapterTree, selectedChapter, selectedTitleNumber, mode, view]);
 
   const toggleTitleCollapse = (key) => { setCollapsedTitles(prev => ({ ...prev, [key]: !prev[key] })); };
+  const expandAllStudy = () => {
+    if (!chapterTree) return;
+    const ids = [];
+    for (const section of chapterTree.children) collectAllNodeIds(section, ids);
+    setExpandedNodeIds(new Set(ids));
+  };
+  const collapseAllStudy = () => {
+    setExpandedNodeIds(new Set());
+    setStudyCollapseSignal((v) => v + 1);
+  };
   const highlightUIValue = useMemo(() => ({ activeHighlightNodeId, setActiveHighlightNodeId }), [activeHighlightNodeId]);
 
   return (
@@ -771,7 +807,15 @@ export default function ChapterBrowser() {
                 {chapterTree && mode === "study" && (
                   <div className="mx-auto max-w-3xl">
                     {chapterTree.content && <p className="mb-4 rounded-xl bg-white p-4 text-base text-slate-600 shadow-card dark:bg-slate-900 dark:text-slate-300">{chapterTree.content}</p>}
-                    <div className="space-y-1">{chapterTree.children.map((section) => <StudyNodeRenderer key={section.id} node={section} level={0} expandedSet={expandedNodeIds} scrollToId={scrollToNodeId} />)}</div>
+                    <div className="mb-3 flex items-center justify-end gap-2">
+                      <button onClick={expandAllStudy} className="flex h-9 items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 text-sm font-medium text-slate-600 active:bg-slate-100 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300 dark:active:bg-slate-700">
+                        <span aria-hidden>⤢</span> Expand All
+                      </button>
+                      <button onClick={collapseAllStudy} className="flex h-9 items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 text-sm font-medium text-slate-600 active:bg-slate-100 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300 dark:active:bg-slate-700">
+                        <span aria-hidden>⤡</span> Collapse All
+                      </button>
+                    </div>
+                    <div className="space-y-1">{chapterTree.children.map((section) => <StudyNodeRenderer key={section.id} node={section} level={0} expandedSet={expandedNodeIds} scrollToId={scrollToNodeId} collapseSignal={studyCollapseSignal} />)}</div>
                   </div>
                 )}
                 {chapterTree && mode === "reading" && (
