@@ -307,12 +307,10 @@ const READING_TYPE_STYLES = {
 
 function ReadingNodeRenderer({ node, level = 0, fontScale, expandedSet = new Set(), scrollToId = null }) {
   const nodeRef = useRef(null);
-  const [expanded, setExpanded] = useState(true);
   const [notesOpen, setNotesOpen] = useState(false);
   const hasChildren = node.children && node.children.length > 0;
   const { highlights, addHighlight, removeHighlight } = useNodeHighlights(node.id, !!node.content);
   const { notes, createNote, editNote, removeNote } = useNodeNotes(node.id, true);
-  useEffect(() => { if (expandedSet.has(node.id)) setExpanded(true); }, [expandedSet, node.id]);
   useEffect(() => {
     if (scrollToId === node.id && nodeRef.current) {
       setTimeout(() => {
@@ -322,11 +320,10 @@ function ReadingNodeRenderer({ node, level = 0, fontScale, expandedSet = new Set
       }, 120);
     }
   }, [scrollToId, node.id]);
-  const toggle = (e) => { e.stopPropagation(); if (hasChildren) setExpanded((v) => !v); };
   const headingSize = node.node_type === "chapter" ? 1.6 : node.node_type === "section" ? 1.3 : 1;
   return (
     <div ref={nodeRef} style={{ marginLeft: `${Math.min(level, 4) * 0.6}rem` }} className="my-5 rounded-lg transition-colors">
-      <div onClick={toggle} className={`font-serif ${READING_TYPE_STYLES[node.node_type] || "text-slate-800 dark:text-slate-200"} ${hasChildren ? "cursor-pointer" : ""}`} style={{ fontSize: `${headingSize * fontScale}rem` }}>
+      <div className={`font-serif ${READING_TYPE_STYLES[node.node_type] || "text-slate-800 dark:text-slate-200"}`} style={{ fontSize: `${headingSize * fontScale}rem` }}>
         {node.node_type === "section" && `Section ${node.node_number}. `}
         {node.node_type === "chapter" && `Chapter ${node.node_number}. `}
         {node.title || node.node_number}
@@ -355,7 +352,7 @@ function ReadingNodeRenderer({ node, level = 0, fontScale, expandedSet = new Set
           </ul>
         </div>
       )}
-      {expanded && hasChildren && <div>{node.children.map((child) => <ReadingNodeRenderer key={child.id} node={child} level={level + 1} fontScale={fontScale} expandedSet={expandedSet} scrollToId={scrollToId} />)}</div>}
+      {hasChildren && <div>{node.children.map((child) => <ReadingNodeRenderer key={child.id} node={child} level={level + 1} fontScale={fontScale} expandedSet={expandedSet} scrollToId={scrollToId} />)}</div>}
     </div>
   );
 }
