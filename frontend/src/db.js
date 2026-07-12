@@ -315,3 +315,20 @@ export function getProgress() {
     return null;
   }
 }
+
+// ---------- Tutorial ----------
+const TUTORIAL_KEY = 'customsLaw_tutorialSeen';
+
+export function hasTutorialBeenSeen() {
+  try {
+    return localStorage.getItem(TUTORIAL_KEY) === 'true';
+  } catch {
+    return true;
+  }
+}
+
+export function markTutorialSeen() {
+  try {
+    localStorage.setItem(TUTORIAL_KEY, 'true');
+  } catch {}
+}

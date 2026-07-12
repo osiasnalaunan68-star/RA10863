@@ -4,6 +4,7 @@ import {
   addHighlight, removeHighlight, getHighlightsForNode,
   getNotesForNode, addNote, updateNote, deleteNote,
   saveProgress, getProgress,
+  hasTutorialBeenSeen, markTutorialSeen,
 } from "../db";
 
 const MODE_KEY = "customsLaw_mode";
@@ -515,7 +516,61 @@ function DarkModeToggle({ enabled, onChange }) {
   );
 }
 
-function SettingsView({ darkMode, setDarkMode }) {
+const TUTORIAL_STEPS = [
+  { icon: "⚖️", title: "Welcome to RA 10863", body: "Your complete offline companion for the Customs Modernization and Tariff Act. Let's take a 60-second tour of what you can do." },
+  { icon: "📚", title: "Browse the Law", body: "Tap the menu button (☰) to open the sidebar. Every Title, Chapter, and Section is organized in the correct legal order." },
+  { icon: "📘", title: "Study Mode", body: "Expand one section at a time to focus on details. Use Expand All or Collapse All at the top to move through a whole chapter faster." },
+  { icon: "📖", title: "Reading Mode", body: "A clean, book-style view for long reading sessions. Tap 🎯 Focus to hide the toolbar and read distraction-free." },
+  { icon: "🖍️", title: "Highlights", body: "Select any text to highlight it. Works in both Study and Reading mode, and is saved automatically — even offline." },
+  { icon: "📝", title: "Notes", body: "Tap \"Add Note\" under any section to write your own explanation. Edit or delete your notes anytime." },
+  { icon: "🔍", title: "Search", body: "Find anything instantly. Try a section number like \"102\", or a keyword like \"smuggling\"." },
+  { icon: "⏱️", title: "Resume Reading", body: "Close the app anytime — a \"Continue where you left off\" card will bring you right back to your spot." },
+  { icon: "⚙️", title: "Settings", body: "Switch Dark Mode on or off, and replay this tour anytime from the Settings screen." },
+];
+
+function TutorialOverlay({ onFinish }) {
+  const [step, setStep] = useState(0);
+  const total = TUTORIAL_STEPS.length;
+  const isLast = step === total - 1;
+  const current = TUTORIAL_STEPS[step];
+
+  const next = () => { if (isLast) onFinish(); else setStep((s) => s + 1); };
+  const back = () => setStep((s) => Math.max(0, s - 1));
+
+  return (
+    <div className="fixed inset-0 z-[60] flex flex-col justify-end bg-slate-900/70 backdrop-blur-sm sm:items-center sm:justify-center">
+      <div className="w-full rounded-t-3xl bg-white p-6 shadow-2xl dark:bg-slate-900 sm:max-w-md sm:rounded-3xl">
+        <div className="mb-4 flex items-center justify-between">
+          <div className="flex gap-1.5">
+            {TUTORIAL_STEPS.map((_, i) => (
+              <span key={i} className={`h-1.5 rounded-full transition-all duration-300 ${i === step ? "w-6 bg-navy-900 dark:bg-slate-100" : "w-1.5 bg-slate-200 dark:bg-slate-700"}`} />
+            ))}
+          </div>
+          <button onClick={onFinish} className="text-sm font-medium text-slate-400 active:text-slate-600 dark:text-slate-500 dark:active:text-slate-300">
+            Skip
+          </button>
+        </div>
+        <div className="mb-6 flex flex-col items-center text-center">
+          <span className="mb-3 text-5xl" aria-hidden>{current.icon}</span>
+          <h2 className="mb-2 text-xl font-bold text-slate-900 dark:text-slate-50">{current.title}</h2>
+          <p className="text-sm leading-relaxed text-slate-600 dark:text-slate-300">{current.body}</p>
+        </div>
+        <div className="flex items-center gap-2">
+          {step > 0 && (
+            <button onClick={back} className="flex h-12 flex-1 items-center justify-center rounded-xl border border-slate-200 text-sm font-semibold text-slate-600 active:bg-slate-100 dark:border-slate-600 dark:text-slate-300 dark:active:bg-slate-800">
+              Back
+            </button>
+          )}
+          <button onClick={next} className="flex h-12 flex-[2] items-center justify-center rounded-xl bg-navy-900 text-sm font-semibold text-white shadow-sm active:bg-navy-800 dark:bg-navy-700 dark:active:bg-navy-600">
+            {isLast ? "Start Exploring" : "Next"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SettingsView({ darkMode, setDarkMode, onReplayTutorial }) {
   return (
     <div className="mx-auto max-w-2xl pb-10">
       <h1 className="mb-1 text-2xl font-bold text-slate-900 dark:text-slate-50">Settings</h1>
@@ -526,6 +581,12 @@ function SettingsView({ darkMode, setDarkMode }) {
           <div className="min-w-0"><p className="font-medium text-slate-800 dark:text-slate-100">🌙 Dark Mode</p><p className="text-sm text-slate-500 dark:text-slate-400">Easier on the eyes in low light.</p></div>
           <DarkModeToggle enabled={darkMode} onChange={setDarkMode} />
         </div>
+      </section>
+      <section className="mb-6 rounded-2xl border border-slate-200 bg-white p-4 shadow-card dark:border-slate-700 dark:bg-slate-800">
+        <h2 className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">Help</h2>
+        <button onClick={onReplayTutorial} className="flex min-h-[44px] w-full items-center justify-center gap-2 rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700 active:bg-slate-100 dark:border-slate-600 dark:text-slate-200 dark:active:bg-slate-700">
+          🔄 Replay Tutorial
+        </button>
       </section>
       <section className="mb-6 rounded-2xl border border-slate-200 bg-white p-4 shadow-card dark:border-slate-700 dark:bg-slate-800">
         <h2 className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">About this App</h2>
@@ -584,6 +645,7 @@ export default function ChapterBrowser() {
   const [studyCollapseSignal, setStudyCollapseSignal] = useState(0);
   const [focusMode, setFocusMode] = useState(false);
   const [resumeAvailable, setResumeAvailable] = useState(null);
+  const [showTutorial, setShowTutorial] = useState(false);
   const mainRef = useRef(null);
   const pendingScrollRestore = useRef(null);
   const scrollSaveTimeout = useRef(null);
@@ -604,6 +666,18 @@ export default function ChapterBrowser() {
       });
     const progress = getProgress();
     if (progress && progress.chapter_number) setResumeAvailable(progress);
+    if (!hasTutorialBeenSeen()) {
+      setShowTutorial(true);
+    }
+  }, []);
+
+  const finishTutorial = useCallback(() => {
+    markTutorialSeen();
+    setShowTutorial(false);
+  }, []);
+
+  const replayTutorial = useCallback(() => {
+    setShowTutorial(true);
   }, []);
 
   const loadChapter = useCallback(async (chapterNumber, titleNumber = null, focusSectionNumber = null) => {
@@ -779,7 +853,7 @@ export default function ChapterBrowser() {
                 <p className="text-sm">{error}</p>
               </div>
             )}
-            {view === "search" ? <SearchView onNavigateChapter={loadChapter} /> : view === "settings" ? <SettingsView darkMode={darkMode} setDarkMode={setDarkMode} /> : (
+            {view === "search" ? <SearchView onNavigateChapter={loadChapter} /> : view === "settings" ? <SettingsView darkMode={darkMode} setDarkMode={setDarkMode} onReplayTutorial={replayTutorial} /> : (
               <>
                 {loading && (
                   <div className="mx-auto max-w-3xl space-y-3">
@@ -836,6 +910,7 @@ export default function ChapterBrowser() {
             <span aria-hidden>✕</span> Exit Focus
           </button>
         )}
+        {showTutorial && <TutorialOverlay onFinish={finishTutorial} />}
       </div>
     </HighlightUIContext.Provider>
   );
