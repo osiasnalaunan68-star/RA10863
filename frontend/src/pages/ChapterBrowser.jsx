@@ -1,5 +1,10 @@
 import { useState, useEffect, useCallback, useRef, useMemo, useContext, createContext } from "react";
-import { getTitles, getChapter, search, addHighlight, removeHighlight, getHighlightsForNode } from "../db";
+import {
+  getTitles, getChapter, search,
+  addHighlight, removeHighlight, getHighlightsForNode,
+  getNotesForNode, addNote, updateNote, deleteNote,
+  saveProgress, getProgress,
+} from "../db";
 
 const MODE_KEY = "customsLaw_mode";
 const FONT_KEY = "customsLaw_fontScale";
@@ -26,6 +31,40 @@ function useNodeHighlights(nodeId, shouldLoad) {
     setHighlights(prev => prev.filter(h => h.id !== hlId));
   }, []);
   return { highlights, addHighlight: addHighlightLocal, removeHighlight: removeHighlightLocal };
+}
+
+function useNodeNotes(nodeId, shouldLoad) {
+  const [notes, setNotes] = useState([]);
+  const [loaded, setLoaded] = useState(false);
+  useEffect(() => {
+    if (!shouldLoad || !nodeId || loaded) return;
+    setNotes(getNotesForNode(nodeId));
+    setLoaded(true);
+  }, [shouldLoad, nodeId, loaded]);
+  const createNote = useCallback((content) => {
+    const note = addNote(nodeId, content);
+    setNotes((prev) => [...prev, note]);
+    return note;
+  }, [nodeId]);
+  const editNote = useCallback((noteId, content) => {
+    const note = updateNote(nodeId, noteId, content);
+    setNotes((prev) => prev.map((n) => (n.id === noteId ? note : n)));
+  }, [nodeId]);
+  const removeNote = useCallback((noteId) => {
+    deleteNote(nodeId, noteId);
+    setNotes((prev) => prev.filter((n) => n.id !== noteId));
+  }, [nodeId]);
+  return { notes, createNote, editNote, removeNote };
+}
+
+function formatNoteDate(iso) {
+  try {
+    const d = new Date(iso);
+    return d.toLocaleDateString(undefined, { month: "short", day: "numeric" }) +
+      " · " + d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+  } catch {
+    return "";
+  }
 }
 
 function applyHighlights(text, highlights) {
@@ -111,6 +150,73 @@ function HighlightableContent({ nodeId, content, highlights, addHighlight, remov
   );
 }
 
+function NotePanel({ notes, onCreate, onEdit, onDelete, onClose }) {
+  const [editingId, setEditingId] = useState(null);
+  const [draft, setDraft] = useState("");
+  const [adding, setAdding] = useState(notes.length === 0);
+
+  const startEdit = (note) => { setEditingId(note.id); setDraft(note.content); setAdding(false); };
+  const startAdd = () => { setAdding(true); setEditingId(null); setDraft(""); };
+  const cancel = () => { setEditingId(null); setAdding(notes.length === 0); setDraft(""); };
+  const save = () => {
+    const text = draft.trim();
+    if (!text) return;
+    if (editingId) { onEdit(editingId, text); setEditingId(null); }
+    else { onCreate(text); setAdding(false); }
+    setDraft("");
+  };
+
+  return (
+    <div onClick={(e) => e.stopPropagation()} className="mt-3 rounded-xl border border-sky-200 bg-sky-50/70 p-3 dark:border-sky-800 dark:bg-sky-950/30">
+      <div className="mb-2 flex items-center justify-between">
+        <span className="text-xs font-semibold uppercase tracking-wide text-sky-700 dark:text-sky-400">📝 My Notes</span>
+        <button onClick={onClose} className="rounded-lg px-2 py-1 text-xs font-medium text-slate-500 active:bg-slate-200 dark:text-slate-400 dark:active:bg-slate-700">Close</button>
+      </div>
+      {notes.length > 0 && !adding && !editingId && (
+        <div className="mb-2 space-y-2">
+          {notes.map((n) => (
+            <div key={n.id} className="rounded-lg bg-white p-2.5 shadow-sm dark:bg-slate-800">
+              <p className="whitespace-pre-wrap text-sm text-slate-700 dark:text-slate-200">{n.content}</p>
+              <div className="mt-1.5 flex items-center justify-between">
+                <span className="text-[11px] text-slate-400 dark:text-slate-500">
+                  {n.updated_at !== n.created_at ? `Edited ${formatNoteDate(n.updated_at)}` : `Added ${formatNoteDate(n.created_at)}`}
+                </span>
+                <div className="flex gap-3">
+                  <button onClick={() => startEdit(n)} className="text-xs font-semibold text-sky-700 dark:text-sky-400">Edit</button>
+                  <button onClick={() => onDelete(n.id)} className="text-xs font-semibold text-red-600 dark:text-red-400">Delete</button>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+      {adding || editingId ? (
+        <div>
+          <textarea
+            autoFocus
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            placeholder="Write your own explanation or reminder…"
+            rows={3}
+            style={{ fontSize: "16px" }}
+            className="w-full rounded-lg border border-slate-200 bg-white p-2.5 text-sm text-slate-800 focus:outline-none dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
+          />
+          <div className="mt-2 flex justify-end gap-2">
+            <button onClick={cancel} className="rounded-lg px-3 py-1.5 text-sm text-slate-500 active:bg-slate-200 dark:text-slate-400 dark:active:bg-slate-700">Cancel</button>
+            <button onClick={save} disabled={!draft.trim()} className="rounded-lg bg-sky-700 px-3 py-1.5 text-sm font-semibold text-white active:bg-sky-800 disabled:opacity-40 dark:bg-sky-600">
+              {editingId ? "Save" : "Add Note"}
+            </button>
+          </div>
+        </div>
+      ) : (
+        <button onClick={startAdd} className="w-full rounded-lg border border-dashed border-sky-300 py-2 text-sm font-medium text-sky-700 active:bg-sky-100 dark:border-sky-700 dark:text-sky-400 dark:active:bg-sky-900/40">
+          + Add Note
+        </button>
+      )}
+    </div>
+  );
+}
+
 const STUDY_TYPE_STYLES = {
   chapter: "text-xl sm:text-2xl font-bold text-navy-900 dark:text-slate-50",
   section: "text-lg sm:text-xl font-semibold text-slate-800 dark:text-slate-200",
@@ -122,11 +228,13 @@ const STUDY_TYPE_STYLES = {
 function StudyNodeRenderer({ node, level = 0, expandedSet = new Set(), scrollToId = null }) {
   const nodeRef = useRef(null);
   const [expanded, setExpanded] = useState(false);
+  const [notesOpen, setNotesOpen] = useState(false);
   const { activeHighlightNodeId, setActiveHighlightNodeId } = useHighlightUI();
   const isHighlighting = activeHighlightNodeId === node.id;
   const hasChildren = node.children && node.children.length > 0;
   const isExpandable = hasChildren || !!node.content;
   const { highlights, addHighlight, removeHighlight } = useNodeHighlights(node.id, expanded);
+  const { notes, createNote, editNote, removeNote } = useNodeNotes(node.id, true);
   useEffect(() => { if (expandedSet.has(node.id)) setExpanded(true); }, [expandedSet, node.id]);
   useEffect(() => {
     if (scrollToId === node.id && nodeRef.current) {
@@ -147,13 +255,20 @@ function StudyNodeRenderer({ node, level = 0, expandedSet = new Set(), scrollToI
             {node.node_type === "chapter" && <span className="inline-block rounded-md bg-navy-900 px-2 py-0.5 text-xs font-semibold uppercase tracking-wide text-white dark:bg-navy-700">Chapter {node.node_number}</span>}
             {node.node_type === "section" && <span className="inline-block rounded-md bg-amber-100 px-2 py-0.5 text-xs font-semibold uppercase tracking-wide text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">Sec. {node.node_number}</span>}
             <span className={STUDY_TYPE_STYLES[node.node_type] || "text-sm text-slate-700 dark:text-slate-300"}>{node.title || node.node_number}</span>
+            {!expanded && notes.length > 0 && <span className="text-xs" title="Has notes">📝</span>}
           </div>
           {expanded && node.content && (
             <div onClick={(e) => e.stopPropagation()} className="mt-2">
               <HighlightableContent nodeId={node.id} content={node.content} highlights={highlights} addHighlight={addHighlight} removeHighlight={removeHighlight} armed={isHighlighting} className="select-text rounded-lg p-2 text-base leading-relaxed text-slate-700 dark:text-slate-300" />
               <div className="mt-1 flex flex-wrap items-center gap-2">
                 <button onClick={() => setActiveHighlightNodeId(isHighlighting ? null : node.id)} className={`min-h-[38px] rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors ${isHighlighting ? "border-amber-400 bg-amber-100 text-amber-800 dark:border-amber-600 dark:bg-amber-900/40 dark:text-amber-300" : "border-emerald-200 bg-emerald-50 text-emerald-700 active:bg-emerald-100 dark:border-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-400 dark:active:bg-emerald-950/50"}`}>{isHighlighting ? "Select text to highlight…" : "🖍 Highlight"}</button>
+                <button onClick={() => setNotesOpen((v) => !v)} className={`min-h-[38px] rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors ${notesOpen ? "border-sky-400 bg-sky-100 text-sky-800 dark:border-sky-600 dark:bg-sky-900/40 dark:text-sky-300" : "border-sky-200 bg-sky-50 text-sky-700 active:bg-sky-100 dark:border-sky-700 dark:bg-sky-950/30 dark:text-sky-400 dark:active:bg-sky-950/50"}`}>
+                  📝 {notes.length > 0 ? `Notes (${notes.length})` : "Add Note"}
+                </button>
               </div>
+              {notesOpen && (
+                <NotePanel notes={notes} onCreate={createNote} onEdit={editNote} onDelete={removeNote} onClose={() => setNotesOpen(false)} />
+              )}
               {node.cross_references && node.cross_references.length > 0 && (
                 <div className="mt-3 rounded-lg bg-slate-50 p-3 text-sm dark:bg-slate-800/60" onClick={(e) => e.stopPropagation()}>
                   <span className="font-medium text-slate-700 dark:text-slate-300">See Also</span>
@@ -193,8 +308,10 @@ const READING_TYPE_STYLES = {
 function ReadingNodeRenderer({ node, level = 0, fontScale, expandedSet = new Set(), scrollToId = null }) {
   const nodeRef = useRef(null);
   const [expanded, setExpanded] = useState(true);
+  const [notesOpen, setNotesOpen] = useState(false);
   const hasChildren = node.children && node.children.length > 0;
   const { highlights, addHighlight, removeHighlight } = useNodeHighlights(node.id, !!node.content);
+  const { notes, createNote, editNote, removeNote } = useNodeNotes(node.id, true);
   useEffect(() => { if (expandedSet.has(node.id)) setExpanded(true); }, [expandedSet, node.id]);
   useEffect(() => {
     if (scrollToId === node.id && nodeRef.current) {
@@ -208,13 +325,26 @@ function ReadingNodeRenderer({ node, level = 0, fontScale, expandedSet = new Set
   const toggle = (e) => { e.stopPropagation(); if (hasChildren) setExpanded((v) => !v); };
   const headingSize = node.node_type === "chapter" ? 1.6 : node.node_type === "section" ? 1.3 : 1;
   return (
-    <div ref={nodeRef} style={{ marginLeft: `${Math.min(level, 4) * 0.6}rem` }} className="my-4 rounded-lg transition-colors">
+    <div ref={nodeRef} style={{ marginLeft: `${Math.min(level, 4) * 0.6}rem` }} className="my-5 rounded-lg transition-colors">
       <div onClick={toggle} className={`font-serif ${READING_TYPE_STYLES[node.node_type] || "text-slate-800 dark:text-slate-200"} ${hasChildren ? "cursor-pointer" : ""}`} style={{ fontSize: `${headingSize * fontScale}rem` }}>
         {node.node_type === "section" && `Section ${node.node_number}. `}
         {node.node_type === "chapter" && `Chapter ${node.node_number}. `}
         {node.title || node.node_number}
+        {notes.length > 0 && <span className="ml-1 align-middle text-sm" title="Has notes">📝</span>}
       </div>
       {node.content && <HighlightableContent nodeId={node.id} content={node.content} highlights={highlights} addHighlight={addHighlight} removeHighlight={removeHighlight} armed={true} className="select-text font-serif leading-loose text-slate-800 dark:text-slate-300" />}
+      {node.content && (
+        <div className="mt-2 flex flex-wrap items-center gap-2 font-sans">
+          <button onClick={() => setNotesOpen((v) => !v)} className={`min-h-[36px] rounded-lg border px-3 py-1 text-sm font-medium transition-colors ${notesOpen ? "border-sky-400 bg-sky-100 text-sky-800 dark:border-sky-600 dark:bg-sky-900/40 dark:text-sky-300" : "border-sky-200 bg-sky-50 text-sky-700 active:bg-sky-100 dark:border-sky-700 dark:bg-sky-950/30 dark:text-sky-400 dark:active:bg-sky-950/50"}`}>
+            📝 {notes.length > 0 ? `Notes (${notes.length})` : "Add Note"}
+          </button>
+        </div>
+      )}
+      {notesOpen && (
+        <div className="font-sans">
+          <NotePanel notes={notes} onCreate={createNote} onEdit={editNote} onDelete={removeNote} onClose={() => setNotesOpen(false)} />
+        </div>
+      )}
       {node.cross_references && node.cross_references.length > 0 && (
         <div className="mt-2 rounded-lg bg-slate-50 p-3 font-sans text-sm dark:bg-slate-800/60">
           <span className="font-medium text-slate-700 dark:text-slate-300">See Also</span>
@@ -429,7 +559,11 @@ export default function ChapterBrowser() {
   const [expandedNodeIds, setExpandedNodeIds] = useState(new Set());
   const [scrollToNodeId, setScrollToNodeId] = useState(null);
   const [collapsedTitles, setCollapsedTitles] = useState({});
+  const [focusMode, setFocusMode] = useState(false);
+  const [resumeAvailable, setResumeAvailable] = useState(null);
   const mainRef = useRef(null);
+  const pendingScrollRestore = useRef(null);
+  const scrollSaveTimeout = useRef(null);
 
   useEffect(() => localStorage.setItem(MODE_KEY, mode), [mode]);
   useEffect(() => localStorage.setItem(FONT_KEY, String(fontScale)), [fontScale]);
@@ -445,6 +579,8 @@ export default function ChapterBrowser() {
         console.error("Failed to load titles:", err);
         setError(err.message);
       });
+    const progress = getProgress();
+    if (progress && progress.chapter_number) setResumeAvailable(progress);
   }, []);
 
   const loadChapter = useCallback(async (chapterNumber, titleNumber = null, focusSectionNumber = null) => {
@@ -457,7 +593,6 @@ export default function ChapterBrowser() {
       setSelectedTitleNumber(titleNumber);
       setView("browse");
       setSidebarOpen(window.innerWidth >= 768);
-      if (mainRef.current) mainRef.current.scrollTop = 0;
       if (focusSectionNumber && data) {
         const { found, ancestors } = findNodeAndAncestors(data, focusSectionNumber);
         if (found) {
@@ -475,6 +610,13 @@ export default function ChapterBrowser() {
         setExpandedNodeIds(new Set());
         setScrollToNodeId(null);
       }
+      if (pendingScrollRestore.current != null) {
+        const targetScroll = pendingScrollRestore.current;
+        pendingScrollRestore.current = null;
+        setTimeout(() => { if (mainRef.current) mainRef.current.scrollTop = targetScroll; }, 180);
+      } else if (mainRef.current) {
+        mainRef.current.scrollTop = 0;
+      }
     } catch (err) {
       setError(err.message);
       setChapterTree(null);
@@ -482,6 +624,37 @@ export default function ChapterBrowser() {
       setLoading(false);
     }
   }, []);
+
+  const resumeReading = useCallback(() => {
+    if (!resumeAvailable) return;
+    if (resumeAvailable.mode) setMode(resumeAvailable.mode);
+    pendingScrollRestore.current = resumeAvailable.scrollTop || 0;
+    loadChapter(resumeAvailable.chapter_number, resumeAvailable.title_number || null);
+  }, [resumeAvailable, loadChapter]);
+
+  useEffect(() => {
+    if (!chapterTree || view !== "browse") return;
+    const el = mainRef.current;
+    if (!el) return;
+    const persist = () => {
+      saveProgress({
+        title_number: selectedTitleNumber,
+        chapter_number: selectedChapter,
+        mode,
+        scrollTop: el.scrollTop,
+      });
+    };
+    const onScroll = () => {
+      if (scrollSaveTimeout.current) clearTimeout(scrollSaveTimeout.current);
+      scrollSaveTimeout.current = setTimeout(persist, 500);
+    };
+    persist();
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      el.removeEventListener("scroll", onScroll);
+      if (scrollSaveTimeout.current) clearTimeout(scrollSaveTimeout.current);
+    };
+  }, [chapterTree, selectedChapter, selectedTitleNumber, mode, view]);
 
   const toggleTitleCollapse = (key) => { setCollapsedTitles(prev => ({ ...prev, [key]: !prev[key] })); };
   const highlightUIValue = useMemo(() => ({ activeHighlightNodeId, setActiveHighlightNodeId }), [activeHighlightNodeId]);
@@ -529,7 +702,7 @@ export default function ChapterBrowser() {
         )}
         <div className="flex min-w-0 flex-1 flex-col">
           <div className="safe-top sticky top-0 z-20 border-b border-slate-200 bg-white/90 backdrop-blur dark:border-slate-800 dark:bg-slate-900/90">
-            <div className="flex items-center gap-1.5 px-2 py-2">
+            <div className={`flex items-center gap-1.5 px-2 transition-all duration-300 ${focusMode && mode === "reading" ? "max-h-0 overflow-hidden opacity-0 py-0" : "max-h-16 py-2 opacity-100"}`}>
               {view === "browse" && (
                 <button onClick={() => setSidebarOpen((v) => !v)} className="flex h-9 w-9 flex-shrink-0 touch-manipulation items-center justify-center rounded-full text-lg text-slate-600 active:bg-slate-100 dark:text-slate-300 dark:active:bg-slate-800" aria-label="Toggle chapter list">
                   {sidebarOpen ? "✕" : "☰"}
@@ -549,14 +722,21 @@ export default function ChapterBrowser() {
               <span className="flex-1" />
               {view === "browse" && <ModeToggle mode={mode} setMode={setMode} />}
             </div>
-            {view === "browse" && (
+            {view === "browse" && !(focusMode && mode === "reading") && (
               <div className="px-3 pb-2">
                 <span className="block truncate text-sm font-semibold text-slate-800 dark:text-slate-200">
                   {chapterTree ? chapterTree.title || `Chapter ${chapterTree.node_number}` : "Select a chapter"}
                 </span>
               </div>
             )}
-            {view === "browse" && mode === "reading" && <div className="flex items-center justify-end gap-2 px-3 pb-2"><FontStepper fontScale={fontScale} setFontScale={setFontScale} /></div>}
+            {view === "browse" && mode === "reading" && (
+              <div className="flex items-center justify-end gap-2 px-3 pb-2">
+                <button onClick={() => setFocusMode((v) => !v)} className={`flex h-9 items-center gap-1 rounded-full border px-3 text-sm font-medium transition-colors ${focusMode ? "border-navy-900 bg-navy-900 text-white dark:border-slate-200 dark:bg-slate-100 dark:text-navy-900" : "border-slate-200 text-slate-600 active:bg-slate-100 dark:border-slate-600 dark:text-slate-300 dark:active:bg-slate-700"}`}>
+                  🎯 <span className="hidden sm:inline">Focus</span>
+                </button>
+                <FontStepper fontScale={fontScale} setFontScale={setFontScale} />
+              </div>
+            )}
             {view === "browse" && mode === "reading" && chapterTree && <ReadingProgressBar containerRef={mainRef} />}
           </div>
           <main ref={mainRef} className="safe-bottom flex-1 overflow-y-auto overscroll-contain bg-slate-50 p-4 dark:bg-slate-950 md:p-6">
@@ -574,7 +754,18 @@ export default function ChapterBrowser() {
                   </div>
                 )}
                 {!loading && !chapterTree && !error && (
-                  <div className="flex h-full flex-col items-center justify-center gap-2 px-6 text-center text-slate-400 dark:text-slate-600">
+                  <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center text-slate-400 dark:text-slate-600">
+                    {resumeAvailable && (
+                      <button onClick={resumeReading} className="mb-2 flex w-full max-w-sm items-center gap-3 rounded-2xl border border-navy-200 bg-white p-4 text-left shadow-card active:bg-slate-50 dark:border-navy-700 dark:bg-slate-900 dark:active:bg-slate-800">
+                        <span className="text-2xl" aria-hidden>⏱️</span>
+                        <span className="min-w-0">
+                          <span className="block text-sm font-semibold text-navy-900 dark:text-slate-100">Continue where you left off</span>
+                          <span className="block truncate text-xs text-slate-500 dark:text-slate-400">
+                            {resumeAvailable.title_number ? `Title ${resumeAvailable.title_number} · ` : ""}Chapter {resumeAvailable.chapter_number}
+                          </span>
+                        </span>
+                      </button>
+                    )}
                     <span className="text-4xl">📖</span>
                     <p className="text-lg font-medium text-slate-500 dark:text-slate-400">Select a chapter to start {mode === "reading" ? "reading" : "studying"}</p>
                     <p className="text-sm">Use the menu button or Search to find what you need.</p>
@@ -587,7 +778,7 @@ export default function ChapterBrowser() {
                   </div>
                 )}
                 {chapterTree && mode === "reading" && (
-                  <div className="mx-auto max-w-[70ch]">
+                  <div className={`mx-auto transition-all duration-300 ${focusMode ? "max-w-[62ch]" : "max-w-[70ch]"}`}>
                     {chapterTree.content && <p className="mb-4 font-serif text-slate-700 dark:text-slate-300" style={{ fontSize: `${1.05 * fontScale}rem` }}>{chapterTree.content}</p>}
                     {chapterTree.children.map((section) => <ReadingNodeRenderer key={section.id} node={section} level={0} fontScale={fontScale} expandedSet={expandedNodeIds} scrollToId={scrollToNodeId} />)}
                   </div>
@@ -596,6 +787,14 @@ export default function ChapterBrowser() {
             )}
           </main>
         </div>
+        {focusMode && mode === "reading" && chapterTree && (
+          <button
+            onClick={() => setFocusMode(false)}
+            className="fixed bottom-6 right-4 z-30 flex items-center gap-1.5 rounded-full bg-navy-900/90 px-4 py-2.5 text-sm font-medium text-white shadow-lg backdrop-blur active:bg-navy-800 dark:bg-slate-100/90 dark:text-navy-900"
+          >
+            <span aria-hidden>✕</span> Exit Focus
+          </button>
+        )}
       </div>
     </HighlightUIContext.Provider>
   );

@@ -248,3 +248,70 @@ export function removeHighlight(highlightId) {
   }
   localStorage.setItem(HIGHLIGHTS_KEY, JSON.stringify(all));
 }
+
+// ---------- Notes ----------
+const NOTES_KEY = 'customsLaw_notes';
+
+export function getNotesForNode(nodeId) {
+  try {
+    const all = JSON.parse(localStorage.getItem(NOTES_KEY) || '{}');
+    return all[nodeId] || [];
+  } catch {
+    return [];
+  }
+}
+
+export function addNote(nodeId, content) {
+  const all = JSON.parse(localStorage.getItem(NOTES_KEY) || '{}');
+  if (!all[nodeId]) all[nodeId] = [];
+  const now = new Date().toISOString();
+  const note = {
+    id: Date.now() + Math.random() * 1000,
+    node_id: nodeId,
+    content,
+    created_at: now,
+    updated_at: now,
+  };
+  all[nodeId].push(note);
+  localStorage.setItem(NOTES_KEY, JSON.stringify(all));
+  return note;
+}
+
+export function updateNote(nodeId, noteId, content) {
+  const all = JSON.parse(localStorage.getItem(NOTES_KEY) || '{}');
+  const list = all[nodeId] || [];
+  const note = list.find((n) => n.id === noteId);
+  if (note) {
+    note.content = content;
+    note.updated_at = new Date().toISOString();
+    localStorage.setItem(NOTES_KEY, JSON.stringify(all));
+  }
+  return note || null;
+}
+
+export function deleteNote(nodeId, noteId) {
+  const all = JSON.parse(localStorage.getItem(NOTES_KEY) || '{}');
+  if (!all[nodeId]) return;
+  all[nodeId] = all[nodeId].filter((n) => n.id !== noteId);
+  if (all[nodeId].length === 0) delete all[nodeId];
+  localStorage.setItem(NOTES_KEY, JSON.stringify(all));
+}
+
+// ---------- Resume Reading / Study Progress ----------
+const PROGRESS_KEY = 'customsLaw_lastPosition';
+
+export function saveProgress(progress) {
+  try {
+    const existing = JSON.parse(localStorage.getItem(PROGRESS_KEY) || '{}');
+    const merged = { ...existing, ...progress, saved_at: new Date().toISOString() };
+    localStorage.setItem(PROGRESS_KEY, JSON.stringify(merged));
+  } catch {}
+}
+
+export function getProgress() {
+  try {
+    return JSON.parse(localStorage.getItem(PROGRESS_KEY) || 'null');
+  } catch {
+    return null;
+  }
+}
