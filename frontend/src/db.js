@@ -182,38 +182,54 @@ export async function getChapter(chapterNumber, titleNumber = null) {
   return buildNode(root);
 }
 
+let nodeIndexPromise = null;
+async function getNodeIndex() {
+  if (!nodeIndexPromise) {
+    nodeIndexPromise = query(`SELECT id, parent_id, node_type, node_number, title FROM legal_nodes`).then((rows) => {
+      const map = new Map();
+      for (const row of rows) map.set(row.id, row);
+      return map;
+    });
+  }
+  return nodeIndexPromise;
+}
+
+function resolveAncestry(nodeIndex, nodeId) {
+  let current = nodeIndex.get(nodeId);
+  let chapter = null;
+  let title = null;
+  while (current) {
+    if (!chapter && current.node_type === 'chapter') chapter = current;
+    if (!title && current.node_type === 'title') title = current;
+    if (chapter && title) break;
+    current = current.parent_id != null ? nodeIndex.get(current.parent_id) : null;
+  }
+  return { chapter, title };
+}
+
 export async function search(queryText, filter = 'all', limit = 50) {
   const tokens = queryText.trim().split(/\s+/).filter(t => t.length > 0);
   if (!tokens.length) return [];
   const matchExpr = tokens.map(t => `"${t}"`).join(' ');
   let sql = `
-    SELECT s.node_id, n.node_type, n.node_number, n.title, n.content,
-           snippet(search_index, 4, '[', ']', '...', 20) AS excerpt,
-           t_parent.node_number AS title_number, t_parent.title AS title_title,
-           ch_parent.node_number AS chapter_number, ch_parent.title AS chapter_title,
-           0 AS exact_match
+    SELECT s.node_id AS id, n.node_type, n.node_number, n.title, n.content,
+           snippet(search_index, 4, '[', ']', '...', 20) AS excerpt
     FROM search_index s
     JOIN legal_nodes n ON n.id = s.node_id
-    LEFT JOIN legal_nodes ch_parent ON ch_parent.id = n.parent_id AND ch_parent.node_type = 'chapter'
-    LEFT JOIN legal_nodes t_parent ON t_parent.id = ch_parent.parent_id AND t_parent.node_type = 'title'
     WHERE search_index MATCH ?
   `;
   const params = [matchExpr];
   if (filter !== 'all') { sql += " AND n.node_type = ?"; params.push(filter); }
   sql += " ORDER BY bm25(search_index, 12.0, 6.0, 1.0, 4.0) LIMIT ?";
   params.push(limit);
+  let rawRows;
   try {
-    return await query(sql, params);
+    rawRows = await query(sql, params);
   } catch (e) {
     let likeSql = `
-      SELECT n.id AS node_id, n.node_type, n.node_number, n.title, n.content,
-             substr(n.content, 1, 200) AS excerpt,
-             t_parent.node_number AS title_number, t_parent.title AS title_title,
-             ch_parent.node_number AS chapter_number, ch_parent.title AS chapter_title,
-             0 AS exact_match
+      SELECT n.id AS id, n.node_type, n.node_number, n.title, n.content,
+             substr(n.content, 1, 200) AS excerpt
       FROM legal_nodes n
-      LEFT JOIN legal_nodes ch_parent ON ch_parent.id = n.parent_id AND ch_parent.node_type = 'chapter'
-      LEFT JOIN legal_nodes t_parent ON t_parent.id = ch_parent.parent_id AND t_parent.node_type = 'title'
       WHERE ${tokens.map(() => '(n.node_number LIKE ? OR n.title LIKE ? OR n.content LIKE ? OR n.node_type LIKE ?)').join(' AND ')}
     `;
     const likeParams = [];
@@ -224,8 +240,28 @@ export async function search(queryText, filter = 'all', limit = 50) {
     if (filter !== 'all') { likeSql += " AND n.node_type = ?"; likeParams.push(filter); }
     likeSql += " ORDER BY n.node_type, CAST(n.node_number AS INTEGER) LIMIT ?";
     likeParams.push(limit);
-    return await query(likeSql, likeParams);
+    rawRows = await query(likeSql, likeParams);
   }
+
+  const nodeIndex = await getNodeIndex();
+  const normalizedQuery = queryText.trim().toLowerCase();
+  return rawRows.map((row) => {
+    const { chapter, title } = resolveAncestry(nodeIndex, row.id);
+    const isExact = !!row.node_number && String(row.node_number).toLowerCase() === normalizedQuery;
+    return {
+      node_id: row.id,
+      node_type: row.node_type,
+      node_number: row.node_number,
+      title: row.title,
+      content: row.content,
+      excerpt: row.excerpt,
+      title_number: title ? title.node_number : null,
+      title_title: title ? title.title : null,
+      chapter_number: chapter ? chapter.node_number : null,
+      chapter_title: chapter ? chapter.title : null,
+      exact_match: isExact ? 1 : 0,
+    };
+  });
 }
 
 const HIGHLIGHTS_KEY = 'customsLaw_highlights';

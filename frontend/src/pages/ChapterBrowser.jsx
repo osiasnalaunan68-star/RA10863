@@ -473,7 +473,7 @@ function SearchView({ onNavigateChapter }) {
   }, [query, filter]);
   const handleKeyDown = (e) => { if (e.key === "Enter") handleSearch(); };
   const clearQuery = () => { setQuery(""); setResults([]); setHasSearched(false); inputRef.current?.focus(); };
-  const handleResultClick = (item) => { onNavigateChapter(item.chapter_number, item.title_number, item.node_number); };
+  const handleResultClick = (item) => { onNavigateChapter(item); };
   const exactResults = results.filter((r) => r.exact_match);
   const otherResults = results.filter((r) => !r.exact_match);
   return (
@@ -605,11 +605,11 @@ function SettingsView({ darkMode, setDarkMode, onReplayTutorial }) {
   );
 }
 
-function findNodeAndAncestors(node, targetNumber, ancestors = []) {
-  if (node.node_number === targetNumber) return { found: true, ancestors };
+function findNodeByIdWithAncestors(node, targetId, ancestors = []) {
+  if (node.id === targetId) return { found: true, ancestors };
   if (node.children) {
     for (const child of node.children) {
-      const result = findNodeAndAncestors(child, targetNumber, [...ancestors, node.id]);
+      const result = findNodeByIdWithAncestors(child, targetId, [...ancestors, node.id]);
       if (result.found) return result;
     }
   }
@@ -680,7 +680,7 @@ export default function ChapterBrowser() {
     setShowTutorial(true);
   }, []);
 
-  const loadChapter = useCallback(async (chapterNumber, titleNumber = null, focusSectionNumber = null) => {
+  const loadChapter = useCallback(async (chapterNumber, titleNumber = null, focusNodeId = null) => {
     setLoading(true); setError(null);
     try {
       const data = await getChapter(chapterNumber, titleNumber);
@@ -690,18 +690,14 @@ export default function ChapterBrowser() {
       setSelectedTitleNumber(titleNumber);
       setView("browse");
       setSidebarOpen(window.innerWidth >= 768);
-      if (focusSectionNumber && data) {
-        const { found, ancestors } = findNodeAndAncestors(data, focusSectionNumber);
+      if (focusNodeId && data) {
+        const { found, ancestors } = findNodeByIdWithAncestors(data, focusNodeId);
         if (found) {
           setExpandedNodeIds(new Set(ancestors));
-          let targetId = null;
-          const walk = (node) => {
-            if (node.node_number === focusSectionNumber && node.node_type === "section") { targetId = node.id; return true; }
-            if (node.children) { for (const child of node.children) { if (walk(child)) return true; } }
-            return false;
-          };
-          walk(data);
-          setScrollToNodeId(targetId);
+          setScrollToNodeId(focusNodeId);
+        } else {
+          setExpandedNodeIds(new Set());
+          setScrollToNodeId(null);
         }
       } else {
         setExpandedNodeIds(new Set());
@@ -728,6 +724,18 @@ export default function ChapterBrowser() {
     pendingScrollRestore.current = resumeAvailable.scrollTop || 0;
     loadChapter(resumeAvailable.chapter_number, resumeAvailable.title_number || null);
   }, [resumeAvailable, loadChapter]);
+
+  const navigateToSearchResult = useCallback((item) => {
+    if (!item.chapter_number) {
+      setView("browse");
+      setSidebarOpen(true);
+      if (item.title_number) {
+        setCollapsedTitles((prev) => ({ ...prev, [item.title_number]: false }));
+      }
+      return;
+    }
+    loadChapter(item.chapter_number, item.title_number, item.node_id);
+  }, [loadChapter]);
 
   useEffect(() => {
     if (!chapterTree || view !== "browse") return;
@@ -853,7 +861,7 @@ export default function ChapterBrowser() {
                 <p className="text-sm">{error}</p>
               </div>
             )}
-            {view === "search" ? <SearchView onNavigateChapter={loadChapter} /> : view === "settings" ? <SettingsView darkMode={darkMode} setDarkMode={setDarkMode} onReplayTutorial={replayTutorial} /> : (
+            {view === "search" ? <SearchView onNavigateChapter={navigateToSearchResult} /> : view === "settings" ? <SettingsView darkMode={darkMode} setDarkMode={setDarkMode} onReplayTutorial={replayTutorial} /> : (
               <>
                 {loading && (
                   <div className="mx-auto max-w-3xl space-y-3">
