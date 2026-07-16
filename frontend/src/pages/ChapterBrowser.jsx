@@ -473,7 +473,16 @@ function SearchView({ onNavigateChapter }) {
   }, [query, filter]);
   const handleKeyDown = (e) => { if (e.key === "Enter") handleSearch(); };
   const clearQuery = () => { setQuery(""); setResults([]); setHasSearched(false); inputRef.current?.focus(); };
-  const handleResultClick = (item) => { onNavigateChapter(item); };
+  const handleResultClick = (item) => {
+    if (item.node_type === "chapter") {
+      onNavigateChapter(item.node_number, item.title_number, null);
+      return;
+    }
+    if (item.node_type === "title") {
+      return;
+    }
+    onNavigateChapter(item.chapter_number, item.title_number, item.node_number);
+  };
   const exactResults = results.filter((r) => r.exact_match);
   const otherResults = results.filter((r) => !r.exact_match);
   return (
