@@ -6,6 +6,7 @@ import {
   saveProgress, getProgress,
   hasTutorialBeenSeen, markTutorialSeen,
 } from "../db";
+import aiExplanations from "../data/aiExplanations.json";
 
 const MODE_KEY = "customsLaw_mode";
 const FONT_KEY = "customsLaw_fontScale";
@@ -13,6 +14,12 @@ const DARK_KEY = "customsLaw_darkMode";
 
 const HighlightUIContext = createContext(null);
 function useHighlightUI() { return useContext(HighlightUIContext); }
+
+function getAiExplanation(node) {
+  if (!node) return null;
+  const key = `${node.node_type}:${node.node_number}`;
+  return aiExplanations[key] || null;
+}
 
 function useNodeHighlights(nodeId, shouldLoad) {
   const [highlights, setHighlights] = useState([]);
@@ -218,6 +225,50 @@ function NotePanel({ notes, onCreate, onEdit, onDelete, onClose }) {
   );
 }
 
+function AskAiModal({ node, explanation, onClose }) {
+  if (!node) return null;
+  const label =
+    node.node_type === "chapter" ? `Chapter ${node.node_number}` :
+    node.node_type === "section" ? `Section ${node.node_number}` :
+    node.title || node.node_number;
+  return (
+    <div className="fixed inset-0 z-[60] flex flex-col justify-end bg-slate-900/70 backdrop-blur-sm sm:items-center sm:justify-center" onClick={onClose}>
+      <div
+        className="flex max-h-[85vh] w-full flex-col rounded-t-3xl bg-white shadow-2xl dark:bg-slate-900 sm:max-w-lg sm:rounded-3xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4 dark:border-slate-800">
+          <div className="flex min-w-0 items-center gap-2">
+            <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-navy-900 text-lg dark:bg-navy-700" aria-hidden>🤖</span>
+            <div className="min-w-0">
+              <p className="text-sm font-bold text-slate-900 dark:text-slate-50">AI Explanation</p>
+              <p className="truncate text-xs text-slate-400 dark:text-slate-500">{label}</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full text-slate-400 active:bg-slate-100 dark:text-slate-500 dark:active:bg-slate-800" aria-label="Close">✕</button>
+        </div>
+        <div className="flex-1 overflow-y-auto px-5 py-4">
+          <div className="flex items-start gap-2.5">
+            <span className="mt-0.5 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-navy-900 text-sm dark:bg-navy-700" aria-hidden>🤖</span>
+            <div className="min-w-0 rounded-2xl rounded-tl-sm bg-slate-100 px-4 py-3 dark:bg-slate-800">
+              {explanation ? (
+                <p className="whitespace-pre-wrap text-sm leading-relaxed text-slate-700 dark:text-slate-200">{explanation}</p>
+              ) : (
+                <p className="text-sm italic leading-relaxed text-slate-400 dark:text-slate-500">
+                  Wala pa akong paliwanag na naka-save para dito. Paparating pa 'yan!
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+        <div className="border-t border-slate-100 px-5 py-3 text-center dark:border-slate-800">
+          <p className="text-[11px] text-slate-400 dark:text-slate-600">Paliwanag na inihanda ng developer.</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 const STUDY_TYPE_STYLES = {
   chapter: "text-xl sm:text-2xl font-bold text-navy-900 dark:text-slate-50",
   section: "text-lg sm:text-xl font-semibold text-slate-800 dark:text-slate-200",
@@ -238,7 +289,7 @@ function StudyNodeRenderer({ node, level = 0, expandedSet = new Set(), scrollToI
   const nodeRef = useRef(null);
   const [expanded, setExpanded] = useState(false);
   const [notesOpen, setNotesOpen] = useState(false);
-  const { activeHighlightNodeId, setActiveHighlightNodeId } = useHighlightUI();
+  const { activeHighlightNodeId, setActiveHighlightNodeId, setAskAiNode } = useHighlightUI();
   const isHighlighting = activeHighlightNodeId === node.id;
   const hasChildren = node.children && node.children.length > 0;
   const isExpandable = hasChildren || !!node.content;
@@ -280,6 +331,9 @@ function StudyNodeRenderer({ node, level = 0, expandedSet = new Set(), scrollToI
                 <button onClick={() => setActiveHighlightNodeId(isHighlighting ? null : node.id)} className={`min-h-[38px] rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors ${isHighlighting ? "border-amber-400 bg-amber-100 text-amber-800 dark:border-amber-600 dark:bg-amber-900/40 dark:text-amber-300" : "border-emerald-200 bg-emerald-50 text-emerald-700 active:bg-emerald-100 dark:border-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-400 dark:active:bg-emerald-950/50"}`}>{isHighlighting ? "Select text to highlight…" : "🖍 Highlight"}</button>
                 <button onClick={() => setNotesOpen((v) => !v)} className={`min-h-[38px] rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors ${notesOpen ? "border-sky-400 bg-sky-100 text-sky-800 dark:border-sky-600 dark:bg-sky-900/40 dark:text-sky-300" : "border-sky-200 bg-sky-50 text-sky-700 active:bg-sky-100 dark:border-sky-700 dark:bg-sky-950/30 dark:text-sky-400 dark:active:bg-sky-950/50"}`}>
                   📝 {notes.length > 0 ? `Notes (${notes.length})` : "Add Note"}
+                </button>
+                <button onClick={() => setAskAiNode(node)} className="min-h-[38px] rounded-lg border border-purple-200 bg-purple-50 px-3 py-1.5 text-sm font-medium text-purple-700 active:bg-purple-100 dark:border-purple-700 dark:bg-purple-950/30 dark:text-purple-400 dark:active:bg-purple-950/50">
+                  🤖 Ask AI
                 </button>
               </div>
               {notesOpen && (
@@ -327,6 +381,7 @@ function ReadingNodeRenderer({ node, level = 0, fontScale, expandedSet = new Set
   const hasChildren = node.children && node.children.length > 0;
   const { highlights, addHighlight, removeHighlight } = useNodeHighlights(node.id, !!node.content);
   const { notes, createNote, editNote, removeNote } = useNodeNotes(node.id, true);
+  const { setAskAiNode } = useHighlightUI();
   useEffect(() => {
     if (scrollToId === node.id && nodeRef.current) {
       setTimeout(() => {
@@ -350,6 +405,9 @@ function ReadingNodeRenderer({ node, level = 0, fontScale, expandedSet = new Set
         <div className="mt-2 flex flex-wrap items-center gap-2 font-sans">
           <button onClick={() => setNotesOpen((v) => !v)} className={`min-h-[36px] rounded-lg border px-3 py-1 text-sm font-medium transition-colors ${notesOpen ? "border-sky-400 bg-sky-100 text-sky-800 dark:border-sky-600 dark:bg-sky-900/40 dark:text-sky-300" : "border-sky-200 bg-sky-50 text-sky-700 active:bg-sky-100 dark:border-sky-700 dark:bg-sky-950/30 dark:text-sky-400 dark:active:bg-sky-950/50"}`}>
             📝 {notes.length > 0 ? `Notes (${notes.length})` : "Add Note"}
+          </button>
+          <button onClick={() => setAskAiNode(node)} className="min-h-[36px] rounded-lg border border-purple-200 bg-purple-50 px-3 py-1 text-sm font-medium text-purple-700 active:bg-purple-100 dark:border-purple-700 dark:bg-purple-950/30 dark:text-purple-400 dark:active:bg-purple-950/50">
+            🤖 Ask AI
           </button>
         </div>
       )}
@@ -532,6 +590,7 @@ const TUTORIAL_STEPS = [
   { icon: "📖", title: "Reading Mode", body: "A clean, book-style view for long reading sessions. Tap 🎯 Focus to hide the toolbar and read distraction-free." },
   { icon: "🖍️", title: "Highlights", body: "Select any text to highlight it. Works in both Study and Reading mode, and is saved automatically — even offline." },
   { icon: "📝", title: "Notes", body: "Tap \"Add Note\" under any section to write your own explanation. Edit or delete your notes anytime." },
+  { icon: "🤖", title: "Ask AI", body: "Tap \"Ask AI\" under any section for a simplified explanation, ready even offline." },
   { icon: "🔍", title: "Search", body: "Find anything instantly. Try a section number like \"102\", or a keyword like \"smuggling\"." },
   { icon: "⏱️", title: "Resume Reading", body: "Close the app anytime — a \"Continue where you left off\" card will bring you right back to your spot." },
   { icon: "⚙️", title: "Settings", body: "Switch Dark Mode on or off, and replay this tour anytime from the Settings screen." },
@@ -614,11 +673,11 @@ function SettingsView({ darkMode, setDarkMode, onReplayTutorial }) {
   );
 }
 
-function findNodeByIdWithAncestors(node, targetId, ancestors = []) {
-  if (node.id === targetId) return { found: true, ancestors };
+function findNodeAndAncestors(node, targetNumber, ancestors = []) {
+  if (node.node_number === targetNumber) return { found: true, ancestors };
   if (node.children) {
     for (const child of node.children) {
-      const result = findNodeByIdWithAncestors(child, targetId, [...ancestors, node.id]);
+      const result = findNodeAndAncestors(child, targetNumber, [...ancestors, node.id]);
       if (result.found) return result;
     }
   }
@@ -648,6 +707,7 @@ export default function ChapterBrowser() {
   const [fontScale, setFontScale] = useState(() => { const saved = parseFloat(localStorage.getItem(FONT_KEY)); return isNaN(saved) ? 1 : saved; });
   const [darkMode, setDarkMode] = useState(() => localStorage.getItem(DARK_KEY) === "true");
   const [activeHighlightNodeId, setActiveHighlightNodeId] = useState(null);
+  const [askAiNode, setAskAiNode] = useState(null);
   const [expandedNodeIds, setExpandedNodeIds] = useState(new Set());
   const [scrollToNodeId, setScrollToNodeId] = useState(null);
   const [collapsedTitles, setCollapsedTitles] = useState({});
@@ -689,7 +749,7 @@ export default function ChapterBrowser() {
     setShowTutorial(true);
   }, []);
 
-  const loadChapter = useCallback(async (chapterNumber, titleNumber = null, focusNodeId = null) => {
+  const loadChapter = useCallback(async (chapterNumber, titleNumber = null, focusSectionNumber = null) => {
     setLoading(true); setError(null);
     try {
       const data = await getChapter(chapterNumber, titleNumber);
@@ -699,14 +759,18 @@ export default function ChapterBrowser() {
       setSelectedTitleNumber(titleNumber);
       setView("browse");
       setSidebarOpen(window.innerWidth >= 768);
-      if (focusNodeId && data) {
-        const { found, ancestors } = findNodeByIdWithAncestors(data, focusNodeId);
+      if (focusSectionNumber && data) {
+        const { found, ancestors } = findNodeAndAncestors(data, focusSectionNumber);
         if (found) {
           setExpandedNodeIds(new Set(ancestors));
-          setScrollToNodeId(focusNodeId);
-        } else {
-          setExpandedNodeIds(new Set());
-          setScrollToNodeId(null);
+          let targetId = null;
+          const walk = (node) => {
+            if (node.node_number === focusSectionNumber) { targetId = node.id; return true; }
+            if (node.children) { for (const child of node.children) { if (walk(child)) return true; } }
+            return false;
+          };
+          walk(data);
+          setScrollToNodeId(targetId);
         }
       } else {
         setExpandedNodeIds(new Set());
@@ -733,18 +797,6 @@ export default function ChapterBrowser() {
     pendingScrollRestore.current = resumeAvailable.scrollTop || 0;
     loadChapter(resumeAvailable.chapter_number, resumeAvailable.title_number || null);
   }, [resumeAvailable, loadChapter]);
-
-  const navigateToSearchResult = useCallback((item) => {
-    if (!item.chapter_number) {
-      setView("browse");
-      setSidebarOpen(true);
-      if (item.title_number) {
-        setCollapsedTitles((prev) => ({ ...prev, [item.title_number]: false }));
-      }
-      return;
-    }
-    loadChapter(item.chapter_number, item.title_number, item.node_id);
-  }, [loadChapter]);
 
   useEffect(() => {
     if (!chapterTree || view !== "browse") return;
@@ -781,7 +833,7 @@ export default function ChapterBrowser() {
     setExpandedNodeIds(new Set());
     setStudyCollapseSignal((v) => v + 1);
   };
-  const highlightUIValue = useMemo(() => ({ activeHighlightNodeId, setActiveHighlightNodeId }), [activeHighlightNodeId]);
+  const highlightUIValue = useMemo(() => ({ activeHighlightNodeId, setActiveHighlightNodeId, askAiNode, setAskAiNode }), [activeHighlightNodeId, askAiNode]);
 
   return (
     <HighlightUIContext.Provider value={highlightUIValue}>
@@ -870,7 +922,7 @@ export default function ChapterBrowser() {
                 <p className="text-sm">{error}</p>
               </div>
             )}
-            {view === "search" ? <SearchView onNavigateChapter={navigateToSearchResult} /> : view === "settings" ? <SettingsView darkMode={darkMode} setDarkMode={setDarkMode} onReplayTutorial={replayTutorial} /> : (
+            {view === "search" ? <SearchView onNavigateChapter={loadChapter} /> : view === "settings" ? <SettingsView darkMode={darkMode} setDarkMode={setDarkMode} onReplayTutorial={replayTutorial} /> : (
               <>
                 {loading && (
                   <div className="mx-auto max-w-3xl space-y-3">
@@ -928,6 +980,7 @@ export default function ChapterBrowser() {
           </button>
         )}
         {showTutorial && <TutorialOverlay onFinish={finishTutorial} />}
+        {askAiNode && <AskAiModal node={askAiNode} explanation={getAiExplanation(askAiNode)} onClose={() => setAskAiNode(null)} />}
       </div>
     </HighlightUIContext.Provider>
   );
