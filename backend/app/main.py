@@ -100,3 +100,16 @@ async def serve_react(path: str):
         return FileResponse(candidate)
     # Fallback to index.html para sa SPA
     return FileResponse("dist/index.html")
+# Add import
+from app.api import ai_explanations as ai_explanations_router
+
+# Include router
+app.include_router(ai_explanations_router.router, prefix="/api")
+
+# Include AI explanations router
+from app.api import ai_explanations as ai_explanations_router
+app.include_router(ai_explanations_router.router, prefix="/api")
+
+# AI Explanations router
+from app.api import ai_explanations as ai_explanations_router
+app.include_router(ai_explanations_router.router, prefix="/api")

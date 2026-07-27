@@ -1,4 +1,4 @@
-import initSqlJs from 'sql.js';
+import initSqlJs from 'sql.js/dist/sql-wasm.js';
 import sqlWasmUrl from 'sql.js/dist/sql-wasm.wasm?url';
 
 let dbPromise = null;
@@ -182,106 +182,185 @@ export async function getChapter(chapterNumber, titleNumber = null) {
   return buildNode(root);
 }
 
-async function resolveSearchLocation({ parent_id, node_type, node_number, title }) {
-  if (node_type === 'chapter') {
-    let titleRow = null;
-    if (parent_id) {
-      titleRow = await queryOne(
-        "SELECT node_number, title FROM legal_nodes WHERE id = ? AND node_type = 'title'",
-        [parent_id]
-      );
-    }
+// Fetch the FULL subtree of an entire Title — used to build the AI/quiz
+// generation prompt for a whole title in one paste.
+export async function getTitleTree(titleNumber) {
+  const titleRow = await queryOne(
+    "SELECT * FROM legal_nodes WHERE node_type = 'title' AND node_number = ?",
+    [titleNumber]
+  );
+  if (!titleRow) return null;
+
+  const sql = `
+    WITH RECURSIVE subtree(id, parent_id, node_type, node_number, title, content, depth, sort_order) AS (
+      SELECT id, parent_id, node_type, node_number, title, content, depth, sort_order
+      FROM legal_nodes WHERE id = ?
+      UNION ALL
+      SELECT n.id, n.parent_id, n.node_type, n.node_number, n.title, n.content, n.depth, n.sort_order
+      FROM legal_nodes n JOIN subtree s ON n.parent_id = s.id
+    )
+    SELECT * FROM subtree ORDER BY depth, sort_order
+  `;
+  const rows = await query(sql, [titleRow.id]);
+  const nodeMap = {};
+  const root = { ...titleRow, children: [] };
+  nodeMap[titleRow.id] = root;
+  for (const row of rows) {
+    if (row.id === titleRow.id) continue;
+    const parent = nodeMap[row.parent_id];
+    if (!parent) continue;
+    const node = { ...row, children: [] };
+    parent.children.push(node);
+    nodeMap[row.id] = node;
+  }
+  function buildNode(node) {
     return {
-      chapter_number: node_number,
-      chapter_title: title,
-      title_number: titleRow ? titleRow.node_number : null,
-      title_title: titleRow ? titleRow.title : null,
+      id: node.id,
+      node_type: node.node_type,
+      node_number: node.node_number,
+      title: node.title,
+      content: node.content,
+      children: (node.children || []).map(buildNode)
     };
   }
-  if (node_type === 'title') {
-    return { chapter_number: null, chapter_title: null, title_number: node_number, title_title: title };
-  }
-  let currentParentId = parent_id;
-  while (currentParentId) {
-    const parent = await queryOne(
-      "SELECT id, parent_id, node_type, node_number, title FROM legal_nodes WHERE id = ?",
-      [currentParentId]
-    );
-    if (!parent) break;
-    if (parent.node_type === 'chapter') {
-      let titleRow = null;
-      if (parent.parent_id) {
-        titleRow = await queryOne(
-          "SELECT node_number, title FROM legal_nodes WHERE id = ? AND node_type = 'title'",
-          [parent.parent_id]
-        );
-      }
-      return {
-        chapter_number: parent.node_number,
-        chapter_title: parent.title,
-        title_number: titleRow ? titleRow.node_number : null,
-        title_title: titleRow ? titleRow.title : null,
-      };
-    }
-    currentParentId = parent.parent_id;
-  }
-  return { chapter_number: null, chapter_title: null, title_number: null, title_title: null };
+  return buildNode(root);
 }
 
+// ---------- Search ----------
+
+function escapeRegExp(str) {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+// Builds a short excerpt centered on the FIRST match in the content (instead
+// of always showing characters 1-200, which usually cut off the actual
+// match), and wraps every matched token with [ ] so SearchResultCard can
+// turn them into <mark> highlights.
+function buildExcerpt(content, tokens, radius = 90) {
+  if (!content) return '';
+  const lower = content.toLowerCase();
+  let matchIndex = -1;
+  let matchLen = 0;
+  for (const token of tokens) {
+    const idx = lower.indexOf(token.toLowerCase());
+    if (idx !== -1 && (matchIndex === -1 || idx < matchIndex)) {
+      matchIndex = idx;
+      matchLen = token.length;
+    }
+  }
+  let start = 0;
+  let end = Math.min(content.length, 200);
+  if (matchIndex !== -1) {
+    start = Math.max(0, matchIndex - radius);
+    end = Math.min(content.length, matchIndex + matchLen + radius);
+  }
+  let excerpt = content.slice(start, end);
+  if (start > 0) excerpt = `…${excerpt}`;
+  if (end < content.length) excerpt = `${excerpt}…`;
+
+  const sortedTokens = [...tokens].sort((a, b) => b.length - a.length);
+  for (const token of sortedTokens) {
+    if (!token) continue;
+    const re = new RegExp(`(${escapeRegExp(token)})`, 'gi');
+    excerpt = excerpt.replace(re, '[$1]');
+  }
+  return excerpt;
+}
+
+// ✅ FIXED search — no FTS (this sql.js build doesn't have it), uses LIKE.
 export async function search(queryText, filter = 'all', limit = 50) {
-  const tokens = queryText.trim().split(/\s+/).filter(t => t.length > 0);
+  const trimmedQuery = queryText.trim();
+  const tokens = trimmedQuery.split(/\s+/).filter(t => t.length > 0);
   if (!tokens.length) return [];
-  const matchExpr = tokens.map(t => `"${t}"`).join(' ');
+
+  const likeConditions = tokens.map(() =>
+    '(n.node_number LIKE ? OR n.title LIKE ? OR n.content LIKE ?)'
+  ).join(' OR ');
+
+  const likeParams = [];
+  for (const token of tokens) {
+    const like = `%${token}%`;
+    likeParams.push(like, like, like);
+  }
 
   let sql = `
-    SELECT s.node_id AS node_id, n.node_type, n.node_number, n.title, n.content, n.parent_id,
-           snippet(search_index, 4, '[', ']', '...', 20) AS excerpt,
-           0 AS exact_match
-    FROM search_index s
-    JOIN legal_nodes n ON n.id = s.node_id
-    WHERE search_index MATCH ?
+    SELECT
+      n.id AS node_id,
+      n.node_type,
+      n.node_number,
+      n.title,
+      n.content,
+      t_parent.node_number AS title_number,
+      t_parent.title AS title_title,
+      ch_parent.node_number AS chapter_number,
+      ch_parent.title AS chapter_title
+    FROM legal_nodes n
+    LEFT JOIN legal_nodes ch_parent ON ch_parent.id = n.parent_id AND ch_parent.node_type = 'chapter'
+    LEFT JOIN legal_nodes t_parent ON t_parent.id = ch_parent.parent_id AND t_parent.node_type = 'title'
+    WHERE ${likeConditions}
   `;
-  const params = [matchExpr];
-  if (filter !== 'all') { sql += " AND n.node_type = ?"; params.push(filter); }
-  sql += " ORDER BY bm25(search_index, 12.0, 6.0, 1.0, 4.0) LIMIT ?";
-  params.push(limit);
 
-  let rows;
-  try {
-    rows = await query(sql, params);
-  } catch (e) {
-    let likeSql = `
-      SELECT n.id AS node_id, n.node_type, n.node_number, n.title, n.content, n.parent_id,
-             substr(n.content, 1, 200) AS excerpt,
-             0 AS exact_match
+  if (filter !== 'all') {
+    sql += " AND n.node_type = ?";
+    likeParams.push(filter);
+  }
+
+  sql += " ORDER BY n.node_type, CAST(n.node_number AS INTEGER)";
+
+  const rows = await query(sql, likeParams);
+  const lowerQuery = trimmedQuery.toLowerCase();
+
+  const withMeta = rows.map((row) => {
+    const haystacks = [row.node_number, row.title, row.content]
+      .filter(Boolean)
+      .map((s) => String(s).toLowerCase());
+    const exact_match = haystacks.some((h) => h.includes(lowerQuery)) ? 1 : 0;
+    return {
+      ...row,
+      excerpt: buildExcerpt(row.content || '', tokens),
+      exact_match,
+    };
+  });
+
+  // Stable sort: exact matches float to the top; everything else keeps the
+  // node_type/node_number order the SQL query already gave it.
+  withMeta.sort((a, b) => b.exact_match - a.exact_match);
+
+  return withMeta.slice(0, limit);
+}
+
+export async function getChapterForNode(nodeId) {
+  const sql = `
+    WITH RECURSIVE ancestors(id, parent_id, node_type, node_number) AS (
+      SELECT id, parent_id, node_type, node_number
+      FROM legal_nodes
+      WHERE id = ?
+      UNION ALL
+      SELECT n.id, n.parent_id, n.node_type, n.node_number
       FROM legal_nodes n
-      WHERE ${tokens.map(() => '(n.node_number LIKE ? OR n.title LIKE ? OR n.content LIKE ? OR n.node_type LIKE ?)').join(' AND ')}
-    `;
-    const likeParams = [];
-    for (const token of tokens) {
-      const like = `%${token}%`;
-      likeParams.push(like, like, like, like);
-    }
-    if (filter !== 'all') { likeSql += " AND n.node_type = ?"; likeParams.push(filter); }
-    likeSql += " ORDER BY n.node_type, CAST(n.node_number AS INTEGER) LIMIT ?";
-    likeParams.push(limit);
-    rows = await query(likeSql, likeParams);
-  }
+      JOIN ancestors a ON n.id = a.parent_id
+    )
+    SELECT node_type, node_number, id
+    FROM ancestors
+    WHERE node_type = 'chapter'
+    LIMIT 1
+  `;
+  const result = await queryOne(sql, [nodeId]);
+  if (!result) return null;
 
-  const results = [];
-  for (const row of rows) {
-    const loc = await resolveSearchLocation(row);
-    results.push({
-      node_id: row.node_id,
-      node_type: row.node_type,
-      node_number: row.node_number,
-      title: row.title,
-      excerpt: row.excerpt,
-      ...loc,
-      exact_match: !!row.exact_match,
-    });
-  }
-  return results;
+  const titleSql = `
+    SELECT t.node_number AS title_number
+    FROM legal_nodes t
+    WHERE t.id = (
+      SELECT parent_id FROM legal_nodes WHERE id = ? AND node_type = 'chapter'
+    )
+    AND t.node_type = 'title'
+  `;
+  const titleRow = await queryOne(titleSql, [result.id]);
+  return {
+    chapter_number: result.node_number,
+    title_number: titleRow ? titleRow.title_number : null
+  };
 }
 
 const HIGHLIGHTS_KEY = 'customsLaw_highlights';

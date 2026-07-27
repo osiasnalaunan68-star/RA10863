@@ -1,12 +1,19 @@
 import { useState, useEffect, useCallback, useRef, useMemo, useContext, createContext } from "react";
 import {
-  getTitles, getChapter, search,
+  getTitles, getChapter, getTitleTree, search,
   addHighlight, removeHighlight, getHighlightsForNode,
   getNotesForNode, addNote, updateNote, deleteNote,
   saveProgress, getProgress,
   hasTutorialBeenSeen, markTutorialSeen,
+  getChapterForNode,
 } from "../db";
-import aiExplanations from "../data/aiExplanations.json";
+import {
+  getAiContext, AI_APPS, copyPromptAndOpen,
+} from "../aiContext";
+import { IS_DEV } from "../env";
+import { copyQuizPromptForTitle } from "../quizContext";
+import DevPanel from "./DevPanel";
+import QuizPage from "./QuizPage";
 
 const MODE_KEY = "customsLaw_mode";
 const FONT_KEY = "customsLaw_fontScale";
@@ -14,12 +21,6 @@ const DARK_KEY = "customsLaw_darkMode";
 
 const HighlightUIContext = createContext(null);
 function useHighlightUI() { return useContext(HighlightUIContext); }
-
-function getAiExplanation(node) {
-  if (!node) return null;
-  const key = `${node.node_type}:${node.node_number}`;
-  return aiExplanations[key] || null;
-}
 
 function useNodeHighlights(nodeId, shouldLoad) {
   const [highlights, setHighlights] = useState([]);
@@ -225,50 +226,59 @@ function NotePanel({ notes, onCreate, onEdit, onDelete, onClose }) {
   );
 }
 
-function AskAiModal({ node, explanation, onClose }) {
-  if (!node) return null;
-  const label =
-    node.node_type === "chapter" ? `Chapter ${node.node_number}` :
-    node.node_type === "section" ? `Section ${node.node_number}` :
-    node.title || node.node_number;
+function AiContextModal({ node, onClose }) {
+  const [entry] = useState(() => getAiContext(node.id));
+  const [copiedApp, setCopiedApp] = useState(null);
+
+  const handleAskExternal = async (app) => {
+    const prompt = entry?.prompt?.trim() ||
+      `Explain "${node.title || node.node_number}" (${node.node_type} ${node.node_number || ""}) from RA 10863, the Philippine Customs Modernization and Tariff Act, in simple terms with an example.`;
+    await copyPromptAndOpen(prompt, app.url);
+    setCopiedApp(app.id);
+    setTimeout(() => setCopiedApp(null), 2500);
+  };
+
   return (
-    <div className="fixed inset-0 z-[60] flex flex-col justify-end bg-slate-900/70 backdrop-blur-sm sm:items-center sm:justify-center" onClick={onClose}>
-      <div
-        className="flex max-h-[85vh] w-full flex-col rounded-t-3xl bg-white shadow-2xl dark:bg-slate-900 sm:max-w-lg sm:rounded-3xl"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4 dark:border-slate-800">
-          <div className="flex min-w-0 items-center gap-2">
-            <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-navy-900 text-lg dark:bg-navy-700" aria-hidden>🤖</span>
-            <div className="min-w-0">
-              <p className="text-sm font-bold text-slate-900 dark:text-slate-50">AI Explanation</p>
-              <p className="truncate text-xs text-slate-400 dark:text-slate-500">{label}</p>
+    <div className="fixed inset-0 z-[70] flex items-end justify-center bg-slate-900/60 backdrop-blur-sm sm:items-center" onClick={onClose}>
+      <div onClick={(e) => e.stopPropagation()} className="max-h-[88vh] w-full overflow-y-auto rounded-t-3xl bg-white p-5 shadow-2xl dark:bg-slate-900 sm:max-w-lg sm:rounded-3xl">
+        <div className="mb-3 flex items-start justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-amber-400 to-navy-700 text-lg">🤖</span>
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">Osias 6.7</p>
+              <p className="text-xl font-extrabold leading-tight text-slate-900 dark:text-slate-50">
+                {entry?.title || `About ${node.node_type} ${node.node_number || ""}`}
+              </p>
             </div>
           </div>
-          <button onClick={onClose} className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full text-slate-400 active:bg-slate-100 dark:text-slate-500 dark:active:bg-slate-800" aria-label="Close">✕</button>
+          <button onClick={onClose} className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full text-slate-400 active:bg-slate-100 dark:text-slate-500 dark:active:bg-slate-800">✕</button>
         </div>
-        <div className="flex-1 overflow-y-auto px-5 py-4">
-          <div className="flex items-start gap-2.5">
-            <span className="mt-0.5 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-navy-900 text-sm dark:bg-navy-700" aria-hidden>🤖</span>
-            <div className="min-w-0 rounded-2xl rounded-tl-sm bg-slate-100 px-4 py-3 dark:bg-slate-800">
-              {explanation ? (
-                <p className="whitespace-pre-wrap text-sm leading-relaxed text-slate-700 dark:text-slate-200">{explanation}</p>
-              ) : (
-                <p className="text-sm italic leading-relaxed text-slate-400 dark:text-slate-500">
-                  Wala pa akong paliwanag na naka-save para dito. Paparating pa 'yan!
-                </p>
-              )}
-            </div>
+
+        {entry?.content ? (
+          <p className="whitespace-pre-wrap rounded-2xl bg-slate-50 p-3 text-base leading-relaxed text-slate-700 dark:bg-slate-800/60 dark:text-slate-200">{entry.content}</p>
+        ) : (
+          <p className="rounded-2xl bg-slate-50 p-3 text-sm italic text-slate-400 dark:bg-slate-800/60 dark:text-slate-500">Osias 6.7 hasn't explained this part yet.</p>
+        )}
+
+        <div className="mt-4 border-t border-slate-100 pt-3 dark:border-slate-800">
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">Still confused? Ask another AI</p>
+          <div className="flex flex-wrap gap-2">
+            {AI_APPS.map((app) => (
+              <button key={app.id} onClick={() => handleAskExternal(app)} className="flex min-h-[42px] items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3.5 text-sm font-medium text-slate-700 active:bg-slate-100 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:active:bg-slate-700">
+                <span aria-hidden>{app.icon}</span> {app.label}
+              </button>
+            ))}
           </div>
-        </div>
-        <div className="border-t border-slate-100 px-5 py-3 text-center dark:border-slate-800">
-          <p className="text-[11px] text-slate-400 dark:text-slate-600">Paliwanag na inihanda ng developer.</p>
+          {copiedApp && (
+            <p className="mt-2 text-xs font-medium text-emerald-600 dark:text-emerald-400">
+              ✓ Prompt copied — paste it in {AI_APPS.find((a) => a.id === copiedApp)?.label} and send.
+            </p>
+          )}
         </div>
       </div>
     </div>
   );
 }
-
 const STUDY_TYPE_STYLES = {
   chapter: "text-xl sm:text-2xl font-bold text-navy-900 dark:text-slate-50",
   section: "text-lg sm:text-xl font-semibold text-slate-800 dark:text-slate-200",
@@ -289,13 +299,16 @@ function StudyNodeRenderer({ node, level = 0, expandedSet = new Set(), scrollToI
   const nodeRef = useRef(null);
   const [expanded, setExpanded] = useState(false);
   const [notesOpen, setNotesOpen] = useState(false);
-  const { activeHighlightNodeId, setActiveHighlightNodeId, setAskAiNode } = useHighlightUI();
+  const [aiModalOpen, setAiModalOpen] = useState(false);
+  const aiEntry = useMemo(() => getAiContext(node.id), [node.id]);
+  const { activeHighlightNodeId, setActiveHighlightNodeId } = useHighlightUI();
   const isHighlighting = activeHighlightNodeId === node.id;
   const hasChildren = node.children && node.children.length > 0;
   const isExpandable = hasChildren || !!node.content;
   const { highlights, addHighlight, removeHighlight } = useNodeHighlights(node.id, expanded);
   const { notes, createNote, editNote, removeNote } = useNodeNotes(node.id, true);
   const prevCollapseSignal = useRef(collapseSignal);
+  
   useEffect(() => { if (expandedSet.has(node.id)) setExpanded(true); }, [expandedSet, node.id]);
   useEffect(() => {
     if (collapseSignal !== prevCollapseSignal.current) {
@@ -312,7 +325,9 @@ function StudyNodeRenderer({ node, level = 0, expandedSet = new Set(), scrollToI
       }, 120);
     }
   }, [scrollToId, node.id]);
+
   const toggle = (e) => { e.stopPropagation(); if (isExpandable) setExpanded((v) => !v); };
+
   return (
     <div ref={nodeRef} style={{ marginLeft: `${Math.min(level, 6) * 0.9}rem` }} className="my-1 rounded-xl transition-colors">
       <div onClick={toggle} role="button" tabIndex={0} aria-expanded={isExpandable ? expanded : undefined} className="flex items-start gap-2 rounded-xl px-3 py-2.5 hover:bg-slate-50 active:bg-slate-100 cursor-pointer touch-manipulation dark:hover:bg-slate-800/60 dark:active:bg-slate-800">
@@ -323,6 +338,7 @@ function StudyNodeRenderer({ node, level = 0, expandedSet = new Set(), scrollToI
             {node.node_type === "section" && <span className="inline-block rounded-md bg-amber-100 px-2 py-0.5 text-xs font-semibold uppercase tracking-wide text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">Sec. {node.node_number}</span>}
             <span className={STUDY_TYPE_STYLES[node.node_type] || "text-sm text-slate-700 dark:text-slate-300"}>{node.title || node.node_number}</span>
             {!expanded && notes.length > 0 && <span className="text-xs" title="Has notes">📝</span>}
+            {!expanded && aiEntry && <span className="text-xs" title="AI explanation available">🤖</span>}
           </div>
           {expanded && node.content && (
             <div onClick={(e) => e.stopPropagation()} className="mt-2">
@@ -332,13 +348,14 @@ function StudyNodeRenderer({ node, level = 0, expandedSet = new Set(), scrollToI
                 <button onClick={() => setNotesOpen((v) => !v)} className={`min-h-[38px] rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors ${notesOpen ? "border-sky-400 bg-sky-100 text-sky-800 dark:border-sky-600 dark:bg-sky-900/40 dark:text-sky-300" : "border-sky-200 bg-sky-50 text-sky-700 active:bg-sky-100 dark:border-sky-700 dark:bg-sky-950/30 dark:text-sky-400 dark:active:bg-sky-950/50"}`}>
                   📝 {notes.length > 0 ? `Notes (${notes.length})` : "Add Note"}
                 </button>
-                <button onClick={() => setAskAiNode(node)} className="min-h-[38px] rounded-lg border border-purple-200 bg-purple-50 px-3 py-1.5 text-sm font-medium text-purple-700 active:bg-purple-100 dark:border-purple-700 dark:bg-purple-950/30 dark:text-purple-400 dark:active:bg-purple-950/50">
+                <button onClick={() => setAiModalOpen(true)} className="min-h-[38px] rounded-lg border border-purple-200 bg-purple-50 px-3 py-1.5 text-sm font-medium text-purple-700 active:bg-purple-100 dark:border-purple-700 dark:bg-purple-950/30 dark:text-purple-400 dark:active:bg-purple-950/50">
                   🤖 Ask AI
                 </button>
               </div>
               {notesOpen && (
                 <NotePanel notes={notes} onCreate={createNote} onEdit={editNote} onDelete={removeNote} onClose={() => setNotesOpen(false)} />
               )}
+              {aiModalOpen && <AiContextModal node={node} onClose={() => setAiModalOpen(false)} />}
               {node.cross_references && node.cross_references.length > 0 && (
                 <div className="mt-3 rounded-lg bg-slate-50 p-3 text-sm dark:bg-slate-800/60" onClick={(e) => e.stopPropagation()}>
                   <span className="font-medium text-slate-700 dark:text-slate-300">See Also</span>
@@ -378,10 +395,12 @@ const READING_TYPE_STYLES = {
 function ReadingNodeRenderer({ node, level = 0, fontScale, expandedSet = new Set(), scrollToId = null }) {
   const nodeRef = useRef(null);
   const [notesOpen, setNotesOpen] = useState(false);
+  const [aiModalOpen, setAiModalOpen] = useState(false);
+  const aiEntry = useMemo(() => getAiContext(node.id), [node.id]);
   const hasChildren = node.children && node.children.length > 0;
   const { highlights, addHighlight, removeHighlight } = useNodeHighlights(node.id, !!node.content);
   const { notes, createNote, editNote, removeNote } = useNodeNotes(node.id, true);
-  const { setAskAiNode } = useHighlightUI();
+  
   useEffect(() => {
     if (scrollToId === node.id && nodeRef.current) {
       setTimeout(() => {
@@ -391,6 +410,7 @@ function ReadingNodeRenderer({ node, level = 0, fontScale, expandedSet = new Set
       }, 120);
     }
   }, [scrollToId, node.id]);
+
   const headingSize = node.node_type === "chapter" ? 1.6 : node.node_type === "section" ? 1.3 : 1;
   return (
     <div ref={nodeRef} style={{ marginLeft: `${Math.min(level, 4) * 0.6}rem` }} className="my-5 rounded-lg transition-colors">
@@ -399,6 +419,7 @@ function ReadingNodeRenderer({ node, level = 0, fontScale, expandedSet = new Set
         {node.node_type === "chapter" && `Chapter ${node.node_number}. `}
         {node.title || node.node_number}
         {notes.length > 0 && <span className="ml-1 align-middle text-sm" title="Has notes">📝</span>}
+        {aiEntry && <span className="ml-1 align-middle text-sm" title="AI explanation available">🤖</span>}
       </div>
       {node.content && <HighlightableContent nodeId={node.id} content={node.content} highlights={highlights} addHighlight={addHighlight} removeHighlight={removeHighlight} armed={true} className="select-text font-serif leading-loose text-slate-800 dark:text-slate-300" />}
       {node.content && (
@@ -406,7 +427,7 @@ function ReadingNodeRenderer({ node, level = 0, fontScale, expandedSet = new Set
           <button onClick={() => setNotesOpen((v) => !v)} className={`min-h-[36px] rounded-lg border px-3 py-1 text-sm font-medium transition-colors ${notesOpen ? "border-sky-400 bg-sky-100 text-sky-800 dark:border-sky-600 dark:bg-sky-900/40 dark:text-sky-300" : "border-sky-200 bg-sky-50 text-sky-700 active:bg-sky-100 dark:border-sky-700 dark:bg-sky-950/30 dark:text-sky-400 dark:active:bg-sky-950/50"}`}>
             📝 {notes.length > 0 ? `Notes (${notes.length})` : "Add Note"}
           </button>
-          <button onClick={() => setAskAiNode(node)} className="min-h-[36px] rounded-lg border border-purple-200 bg-purple-50 px-3 py-1 text-sm font-medium text-purple-700 active:bg-purple-100 dark:border-purple-700 dark:bg-purple-950/30 dark:text-purple-400 dark:active:bg-purple-950/50">
+          <button onClick={() => setAiModalOpen(true)} className="min-h-[36px] rounded-lg border border-purple-200 bg-purple-50 px-3 py-1 text-sm font-medium text-purple-700 active:bg-purple-100 dark:border-purple-700 dark:bg-purple-950/30 dark:text-purple-400 dark:active:bg-purple-950/50">
             🤖 Ask AI
           </button>
         </div>
@@ -416,6 +437,7 @@ function ReadingNodeRenderer({ node, level = 0, fontScale, expandedSet = new Set
           <NotePanel notes={notes} onCreate={createNote} onEdit={editNote} onDelete={removeNote} onClose={() => setNotesOpen(false)} />
         </div>
       )}
+      {aiModalOpen && <AiContextModal node={node} onClose={() => setAiModalOpen(false)} />}
       {node.cross_references && node.cross_references.length > 0 && (
         <div className="mt-2 rounded-lg bg-slate-50 p-3 font-sans text-sm dark:bg-slate-800/60">
           <span className="font-medium text-slate-700 dark:text-slate-300">See Also</span>
@@ -518,6 +540,7 @@ function SearchView({ onNavigateChapter }) {
   const [error, setError] = useState(null);
   const [hasSearched, setHasSearched] = useState(false);
   const inputRef = useRef(null);
+  
   const handleSearch = useCallback(async () => {
     if (!query.trim()) return;
     setLoading(true); setError(null); setHasSearched(true);
@@ -529,20 +552,31 @@ function SearchView({ onNavigateChapter }) {
       setResults([]);
     } finally { setLoading(false); }
   }, [query, filter]);
+
   const handleKeyDown = (e) => { if (e.key === "Enter") handleSearch(); };
   const clearQuery = () => { setQuery(""); setResults([]); setHasSearched(false); inputRef.current?.focus(); };
-  const handleResultClick = (item) => {
-    if (item.node_type === "chapter") {
-      onNavigateChapter(item.node_number, item.title_number, null);
-      return;
+  
+  const handleResultClick = async (item) => {
+    if (item.chapter_number) {
+      onNavigateChapter(item.chapter_number, item.title_number, item.node_id);
+    } else {
+      try {
+        const chapterInfo = await getChapterForNode(item.node_id);
+        if (chapterInfo) {
+          onNavigateChapter(chapterInfo.chapter_number, chapterInfo.title_number, item.node_id);
+        } else {
+          alert('This item is not under any chapter. Please browse manually.');
+        }
+      } catch (e) {
+        alert('Could not locate the chapter for this item.');
+        console.error(e);
+      }
     }
-    if (item.node_type === "title") {
-      return;
-    }
-    onNavigateChapter(item.chapter_number, item.title_number, item.node_number);
   };
+  
   const exactResults = results.filter((r) => r.exact_match);
   const otherResults = results.filter((r) => !r.exact_match);
+  
   return (
     <div className="mx-auto max-w-3xl p-4">
       <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-card dark:border-slate-700 dark:bg-slate-800">
@@ -590,7 +624,7 @@ const TUTORIAL_STEPS = [
   { icon: "📖", title: "Reading Mode", body: "A clean, book-style view for long reading sessions. Tap 🎯 Focus to hide the toolbar and read distraction-free." },
   { icon: "🖍️", title: "Highlights", body: "Select any text to highlight it. Works in both Study and Reading mode, and is saved automatically — even offline." },
   { icon: "📝", title: "Notes", body: "Tap \"Add Note\" under any section to write your own explanation. Edit or delete your notes anytime." },
-  { icon: "🤖", title: "Ask AI", body: "Tap \"Ask AI\" under any section for a simplified explanation, ready even offline." },
+  { icon: "🤖", title: "Ask AI", body: "Tap Ask AI under any section for an instant offline explanation from Osias 6.7 — or hand off to Meta AI, ChatGPT, or Gemini with one tap." },
   { icon: "🔍", title: "Search", body: "Find anything instantly. Try a section number like \"102\", or a keyword like \"smuggling\"." },
   { icon: "⏱️", title: "Resume Reading", body: "Close the app anytime — a \"Continue where you left off\" card will bring you right back to your spot." },
   { icon: "⚙️", title: "Settings", body: "Switch Dark Mode on or off, and replay this tour anytime from the Settings screen." },
@@ -673,11 +707,11 @@ function SettingsView({ darkMode, setDarkMode, onReplayTutorial }) {
   );
 }
 
-function findNodeAndAncestors(node, targetNumber, ancestors = []) {
-  if (node.node_number === targetNumber) return { found: true, ancestors };
+function findNodeByIdAndAncestors(node, targetId, ancestors = []) {
+  if (node.id === targetId) return { found: true, ancestors, node };
   if (node.children) {
     for (const child of node.children) {
-      const result = findNodeAndAncestors(child, targetNumber, [...ancestors, node.id]);
+      const result = findNodeByIdAndAncestors(child, targetId, [...ancestors, node.id]);
       if (result.found) return result;
     }
   }
@@ -707,7 +741,6 @@ export default function ChapterBrowser() {
   const [fontScale, setFontScale] = useState(() => { const saved = parseFloat(localStorage.getItem(FONT_KEY)); return isNaN(saved) ? 1 : saved; });
   const [darkMode, setDarkMode] = useState(() => localStorage.getItem(DARK_KEY) === "true");
   const [activeHighlightNodeId, setActiveHighlightNodeId] = useState(null);
-  const [askAiNode, setAskAiNode] = useState(null);
   const [expandedNodeIds, setExpandedNodeIds] = useState(new Set());
   const [scrollToNodeId, setScrollToNodeId] = useState(null);
   const [collapsedTitles, setCollapsedTitles] = useState({});
@@ -749,7 +782,7 @@ export default function ChapterBrowser() {
     setShowTutorial(true);
   }, []);
 
-  const loadChapter = useCallback(async (chapterNumber, titleNumber = null, focusSectionNumber = null) => {
+  const loadChapter = useCallback(async (chapterNumber, titleNumber = null, targetNodeId = null) => {
     setLoading(true); setError(null);
     try {
       const data = await getChapter(chapterNumber, titleNumber);
@@ -759,18 +792,14 @@ export default function ChapterBrowser() {
       setSelectedTitleNumber(titleNumber);
       setView("browse");
       setSidebarOpen(window.innerWidth >= 768);
-      if (focusSectionNumber && data) {
-        const { found, ancestors } = findNodeAndAncestors(data, focusSectionNumber);
+      if (targetNodeId && data) {
+        const { found, ancestors, node: foundNode } = findNodeByIdAndAncestors(data, targetNodeId);
         if (found) {
-          setExpandedNodeIds(new Set(ancestors));
-          let targetId = null;
-          const walk = (node) => {
-            if (node.node_number === focusSectionNumber) { targetId = node.id; return true; }
-            if (node.children) { for (const child of node.children) { if (walk(child)) return true; } }
-            return false;
-          };
-          walk(data);
-          setScrollToNodeId(targetId);
+          setExpandedNodeIds(new Set([...ancestors, foundNode.id]));
+          setScrollToNodeId(foundNode.id);
+        } else {
+          setExpandedNodeIds(new Set());
+          setScrollToNodeId(null);
         }
       } else {
         setExpandedNodeIds(new Set());
@@ -823,17 +852,50 @@ export default function ChapterBrowser() {
   }, [chapterTree, selectedChapter, selectedTitleNumber, mode, view]);
 
   const toggleTitleCollapse = (key) => { setCollapsedTitles(prev => ({ ...prev, [key]: !prev[key] })); };
+  
   const expandAllStudy = () => {
     if (!chapterTree) return;
     const ids = [];
     for (const section of chapterTree.children) collectAllNodeIds(section, ids);
     setExpandedNodeIds(new Set(ids));
   };
+  
   const collapseAllStudy = () => {
     setExpandedNodeIds(new Set());
     setStudyCollapseSignal((v) => v + 1);
   };
-  const highlightUIValue = useMemo(() => ({ activeHighlightNodeId, setActiveHighlightNodeId, askAiNode, setAskAiNode }), [activeHighlightNodeId, askAiNode]);
+
+  // 🔽 BINAGO: i-download bilang .txt file sa halip na clipboard, at nakatago sa IS_DEV
+  const handleCopyQuizTemplate = useCallback(async (titleNumber) => {
+    try {
+      const tree = await getTitleTree(titleNumber);
+      if (!tree) { alert("Could not load this title."); return; }
+      const payload = copyQuizPromptForTitle(tree);
+      const blob = new Blob([payload], { type: 'text/plain;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `quiz-prompt-Title-${titleNumber}.txt`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      alert(`✅ Na-download ang quiz-generation prompt para sa Title ${titleNumber} bilang .txt file.
+
+📝 INSTRUCTIONS FOR AI:
+1. Act like a professor designing a CuBLE exam.
+2. SELECTIVELY choose the most important and testable provisions.
+3. There is NO fixed number of questions — generate as many as educationally appropriate.
+4. Use web search (if available) to verify CuBLE exam patterns and frequently tested topics.
+5. Focus on QUALITY over QUANTITY — board-exam relevant questions only.
+
+⚠️ IMPORTANT: The AI will SKIP minor, procedural, or repetitive provisions.`);
+    } catch (err) {
+      alert("Failed to build quiz template: " + err.message);
+    }
+  }, []);
+
+  const highlightUIValue = useMemo(() => ({ activeHighlightNodeId, setActiveHighlightNodeId }), [activeHighlightNodeId]);
 
   return (
     <HighlightUIContext.Provider value={highlightUIValue}>
@@ -851,10 +913,21 @@ export default function ChapterBrowser() {
                 const collapsed = collapsedTitles[key];
                 return (
                   <div key={key} className="mb-2">
-                    <button onClick={() => toggleTitleCollapse(key)} className="flex w-full items-center justify-between gap-2 rounded-lg px-2 py-2 text-left active:bg-slate-50 dark:active:bg-slate-800">
-                      <span className="text-sm font-bold uppercase tracking-wide text-navy-800 dark:text-slate-300">{titleGroup.title_number ? `Title ${titleGroup.title_number}` : titleGroup.title_title}</span>
-                      <span className="flex-shrink-0 text-xs text-slate-400 dark:text-slate-500">{collapsed ? "▸" : "▾"}</span>
-                    </button>
+                    <div className="flex items-center gap-1">
+                      <button onClick={() => toggleTitleCollapse(key)} className="flex min-h-[40px] flex-1 items-center justify-between gap-2 rounded-lg px-2 py-2 text-left active:bg-slate-50 dark:active:bg-slate-800">
+                        <span className="text-sm font-bold uppercase tracking-wide text-navy-800 dark:text-slate-300">{titleGroup.title_number ? `Title ${titleGroup.title_number}` : titleGroup.title_title}</span>
+                        <span className="flex-shrink-0 text-xs text-slate-400 dark:text-slate-500">{collapsed ? "▸" : "▾"}</span>
+                      </button>
+                      {IS_DEV && titleGroup.title_number && (
+                        <button
+                          onClick={() => handleCopyQuizTemplate(titleGroup.title_number)}
+                          title="Download Quiz Template as .txt"
+                          className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg border border-dashed border-purple-400 text-sm text-purple-700 active:bg-purple-100 dark:border-purple-600 dark:text-purple-400"
+                        >
+                          📝
+                        </button>
+                      )}
+                    </div>
                     {!collapsed && (
                       <ul className="ml-1 space-y-0.5 border-l border-slate-100 pl-2 dark:border-slate-800">
                         {titleGroup.chapters.map((ch) => {
@@ -891,9 +964,17 @@ export default function ChapterBrowser() {
                 <button onClick={() => setView("search")} aria-label="Search" className={`min-h-[34px] rounded-full px-2.5 py-1 font-medium transition-colors ${view === "search" ? "bg-white text-navy-900 shadow-sm dark:bg-slate-700 dark:text-slate-50" : "text-slate-500 dark:text-slate-400"}`}>
                   <span aria-hidden>🔍</span><span className="hidden sm:inline ml-1">Search</span>
                 </button>
+                <button onClick={() => setView("quiz")} aria-label="Quiz/Exam" className={`min-h-[34px] rounded-full px-2.5 py-1 font-medium transition-colors ${view === "quiz" ? "bg-white text-navy-900 shadow-sm dark:bg-slate-700 dark:text-slate-50" : "text-slate-500 dark:text-slate-400"}`}>
+                  <span aria-hidden>📝</span><span className="hidden sm:inline ml-1">Quiz/Exam</span>
+                </button>
                 <button onClick={() => setView("settings")} aria-label="Settings" className={`min-h-[34px] rounded-full px-2.5 py-1 font-medium transition-colors ${view === "settings" ? "bg-white text-navy-900 shadow-sm dark:bg-slate-700 dark:text-slate-50" : "text-slate-500 dark:text-slate-400"}`}>
                   ⚙️
                 </button>
+                {IS_DEV && (
+                  <button onClick={() => setView("dev")} aria-label="Dev Panel" className={`min-h-[34px] rounded-full px-2.5 py-1 font-medium transition-colors ${view === "dev" ? "bg-white text-navy-900 shadow-sm dark:bg-slate-700 dark:text-slate-50" : "text-slate-500 dark:text-slate-400"}`}>
+                    🛠
+                  </button>
+                )}
               </div>
               <span className="flex-1" />
               {view === "browse" && <ModeToggle mode={mode} setMode={setMode} />}
@@ -922,7 +1003,7 @@ export default function ChapterBrowser() {
                 <p className="text-sm">{error}</p>
               </div>
             )}
-            {view === "search" ? <SearchView onNavigateChapter={loadChapter} /> : view === "settings" ? <SettingsView darkMode={darkMode} setDarkMode={setDarkMode} onReplayTutorial={replayTutorial} /> : (
+            {view === "search" ? <SearchView onNavigateChapter={loadChapter} /> : view === "dev" && IS_DEV ? <DevPanel /> : view === "quiz" ? <QuizPage /> : view === "settings" ? <SettingsView darkMode={darkMode} setDarkMode={setDarkMode} onReplayTutorial={replayTutorial} /> : (
               <>
                 {loading && (
                   <div className="mx-auto max-w-3xl space-y-3">
@@ -950,7 +1031,7 @@ export default function ChapterBrowser() {
                 {chapterTree && mode === "study" && (
                   <div className="mx-auto max-w-3xl">
                     {chapterTree.content && <p className="mb-4 rounded-xl bg-white p-4 text-base text-slate-600 shadow-card dark:bg-slate-900 dark:text-slate-300">{chapterTree.content}</p>}
-                    <div className="mb-3 flex items-center justify-end gap-2">
+                    <div className="mb-3 flex flex-wrap items-center justify-end gap-2">
                       <button onClick={expandAllStudy} className="flex h-9 items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 text-sm font-medium text-slate-600 active:bg-slate-100 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300 dark:active:bg-slate-700">
                         <span aria-hidden>⤢</span> Expand All
                       </button>
@@ -980,7 +1061,6 @@ export default function ChapterBrowser() {
           </button>
         )}
         {showTutorial && <TutorialOverlay onFinish={finishTutorial} />}
-        {askAiNode && <AskAiModal node={askAiNode} explanation={getAiExplanation(askAiNode)} onClose={() => setAskAiNode(null)} />}
       </div>
     </HighlightUIContext.Provider>
   );
