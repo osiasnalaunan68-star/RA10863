@@ -1,28 +1,61 @@
 workflows:
   android-apk:
     name: Android APK Build
+    max_build_duration: 30
     environment:
-      node: latest
+      node: 22
       java: 21
     scripts:
-      - name: Install dependencies
+      - name: Install root dependencies
         script: |
           npm install
+      - name: Verify and normalize database
+        script: |
+          cd frontend
+          DB=public/customs_law.db
+          ls -l $DB
+          echo "Header: $(head -c 15 $DB)"
+          if head -c 200 $DB | grep -q "git-lfs"; then
+            echo "ERROR: LFS pointer lang ito"; exit 1
+          fi
+          python3 - <<'EOF'
+          import sqlite3, sys
+          c = sqlite3.connect("public/customs_law.db")
+          ok = c.execute("PRAGMA integrity_check").fetchone()[0]
+          print("integrity:", ok)
+          if ok != "ok":
+              print("ERROR: sira ang DB sa repo"); sys.exit(1)
+          print("journal before:", c.execute("PRAGMA journal_mode").fetchone()[0])
+          c.execute("PRAGMA journal_mode=DELETE")
+          c.execute("VACUUM")
+          c.close()
+          EOF
       - name: Build React app
         script: |
           cd frontend
           npm install
-          npm run build
+          rm -rf ../dist
+          npx vite build --outDir ../dist --emptyOutDir
+          ls -l ../dist ../dist/assets
+          ls -l ../dist/customs_law.db
       - name: Sync Capacitor
         script: |
           npx cap sync android
+          ls -l android/app/src/main/assets/public/assets
       - name: Build Android APK
         script: |
           cd android
+          chmod +x gradlew
           ./gradlew assembleDebug
-          echo "--- Searching for build output ---"
           find app/build/outputs -type f 2>/dev/null || echo "outputs dir missing"
+      - name: Verify database inside APK
+        script: |
+          APK=$(find android/app/build/outputs -name "*.apk" | head -1)
+          unzip -l "$APK" | grep -E "customs_law|assets/index-"
+          A=$(unzip -p "$APK" assets/public/customs_law.db | sha256sum | cut -d' ' -f1)
+          B=$(sha256sum dist/customs_law.db | cut -d' ' -f1)
+          echo "APK:  $A"; echo "DIST: $B"
+          [ "$A" = "$B" ] || { echo "MAGKAIBA ang DB"; exit 1; }
     artifacts:
       - android/app/build/outputs/**/*.apk
-      - android/app/build/outputs/**/*.aab
       - android/app/build/outputs/**/output-metadata.json
